@@ -211,6 +211,30 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
         }
     });
 
+    const sourceQuantityName = computed<string>(() => {
+        if (transaction.value.type === TransactionType.Expense) {
+            return 'Quantity consumption';
+        } else if (transaction.value.type === TransactionType.Income) {
+            return 'Quantity of income';
+        } else if (transaction.value.type === TransactionType.Transfer) {
+            return 'Transfer Out quantity';
+        } else {
+            return 'Quantity';
+        }
+    });
+
+    const sourceUnitPriceName = computed<string>(() => {
+        if (transaction.value.type === TransactionType.Expense) {
+            return 'Expense unit price';
+        } else if (transaction.value.type === TransactionType.Income) {
+            return 'Income unit price';
+        } else if (transaction.value.type === TransactionType.Transfer) {
+            return 'Transfer Out unit price';
+        } else {
+            return 'Unit price';
+        }
+    });
+
     const sourceAmountTitle = computed<string>(() => {
         const sourceAccount = allAccountsMap.value[transaction.value.sourceAccountId];
         const amountName = tt(sourceAmountName.value);
@@ -409,6 +433,8 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
                 destinationAccountId: options?.destinationAccountId,
                 amount: options?.amount,
                 destinationAmount: options?.destinationAmount,
+                quantity: options?.quantity,           // Lic
+                unitPrice: options?.unitPrice,         // Lic
                 tagIds: options?.tagIds,
                 comment: options?.comment
             },
@@ -551,6 +577,8 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
         quickSaveButtonTitle,
         cancelButtonTitle,
         sourceAmountName,
+        sourceQuantityName,
+        sourceUnitPriceName,
         sourceAmountTitle,
         sourceAccountTitle,
         transferInAmountTitle,

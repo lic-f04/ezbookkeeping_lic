@@ -15,8 +15,8 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
     public displayOrder: number;
     public hidden: boolean;
 
-    private constructor(id: string, templateType: number, name: string, type: number, categoryId: string, timeZone: string | undefined, utcOffset: number, sourceAccountId: string, destinationAccountId: string, sourceAmount: number, destinationAmount: number, hideAmount: boolean, scheduledFrequencyType: number | undefined, scheduledFrequency: string | undefined, scheduledStartDate: TextualYearMonthDay | undefined, scheduledEndDate: TextualYearMonthDay | undefined, scheduledAt: number | undefined, tagIds: string[], comment: string, editable: boolean, displayOrder: number, hidden: boolean) {
-        super(id, '', type, categoryId, 0, timeZone, utcOffset, sourceAccountId, destinationAccountId, sourceAmount, destinationAmount, hideAmount, tagIds, comment, editable);
+    private constructor(id: string, templateType: number, name: string, type: number, categoryId: string, timeZone: string | undefined, utcOffset: number, sourceAccountId: string, destinationAccountId: string, sourceAmount: number, destinationAmount: number, quantity: number, unitPrice: number, hideAmount: boolean, scheduledFrequencyType: number | undefined, scheduledFrequency: string | undefined, scheduledStartDate: TextualYearMonthDay | undefined, scheduledEndDate: TextualYearMonthDay | undefined, scheduledAt: number | undefined, tagIds: string[], comment: string, editable: boolean, displayOrder: number, hidden: boolean) {
+        super(id, '', type, categoryId, 0, timeZone, utcOffset, sourceAccountId, destinationAccountId, sourceAmount, destinationAmount, quantity, unitPrice, hideAmount, tagIds, comment, editable);
         this.templateType = templateType;
         this.name = name;
         this.scheduledFrequencyType = scheduledFrequencyType;
@@ -98,6 +98,8 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
             transaction.destinationAccountId,
             transaction.sourceAmount,
             transaction.destinationAmount,
+            transaction.quantity,
+            transaction.unitPrice,
             transaction.hideAmount,
             undefined, // scheduledFrequencyType
             undefined, // scheduledFrequency
@@ -125,6 +127,8 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
             templateResponse.destinationAccountId,
             templateResponse.sourceAmount,
             templateResponse.destinationAmount,
+            templateResponse.quantity,
+            templateResponse.unitPrice,
             templateResponse.hideAmount,
             templateResponse.scheduledFrequencyType,
             templateResponse.scheduledFrequency,

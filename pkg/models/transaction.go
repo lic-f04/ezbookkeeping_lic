@@ -130,6 +130,8 @@ type Transaction struct {
 	TransactionTime      int64             `xorm:"UNIQUE(UQE_transaction_uid_time) INDEX(IDX_transaction_uid_deleted_time) INDEX(IDX_transaction_uid_deleted_type_time) INDEX(IDX_transaction_uid_deleted_type_account_id_time) INDEX(IDX_transaction_uid_deleted_category_id_time) INDEX(IDX_transaction_uid_deleted_account_id_time) NOT NULL"`
 	TimezoneUtcOffset    int16             `xorm:"NOT NULL"`
 	Amount               int64             `xorm:"NOT NULL"`
+	Quantity             int64             `xorm:"NOT NULL DEFAULT 1"` // Lic
+	UnitPrice            int64             `xorm:"NOT NULL DEFAULT 0"` // Lic
 	RelatedId            int64             `xorm:"NOT NULL"`
 	RelatedAccountId     int64             `xorm:"NOT NULL"`
 	RelatedAccountAmount int64             `xorm:"NOT NULL"`
@@ -167,6 +169,8 @@ type TransactionCreateRequest struct {
 	DestinationAccountId int64                          `json:"destinationAccountId,string" binding:"min=0"`
 	SourceAmount         int64                          `json:"sourceAmount" binding:"min=-99999999999,max=99999999999"`
 	DestinationAmount    int64                          `json:"destinationAmount" binding:"min=-99999999999,max=99999999999"`
+	Quantity             int64                          `json:"quantity" binding:"min=0,max=999999999"`  // Lic
+	UnitPrice            int64                          `json:"unitPrice" binding:"min=0,max=999999999"` // Lic
 	HideAmount           bool                           `json:"hideAmount"`
 	TagIds               []string                       `json:"tagIds"`
 	PictureIds           []string                       `json:"pictureIds"`
@@ -185,6 +189,8 @@ type TransactionModifyRequest struct {
 	DestinationAccountId int64                          `json:"destinationAccountId,string" binding:"min=0"`
 	SourceAmount         int64                          `json:"sourceAmount" binding:"min=-99999999999,max=99999999999"`
 	DestinationAmount    int64                          `json:"destinationAmount" binding:"min=-99999999999,max=99999999999"`
+	Quantity             int64                          `json:"quantity" binding:"min=0,max=999999999"`  // Lic
+	UnitPrice            int64                          `json:"unitPrice" binding:"min=0,max=999999999"` // Lic
 	HideAmount           bool                           `json:"hideAmount"`
 	TagIds               []string                       `json:"tagIds"`
 	PictureIds           []string                       `json:"pictureIds"`
@@ -363,6 +369,8 @@ type TransactionInfoResponse struct {
 	DestinationAccount   *AccountInfoResponse                     `json:"destinationAccount,omitempty"`
 	SourceAmount         int64                                    `json:"sourceAmount"`
 	DestinationAmount    int64                                    `json:"destinationAmount,omitempty"`
+	Quantity             int64                                    `json:"quantity"`  // Lic
+	UnitPrice            int64                                    `json:"unitPrice"` // Lic
 	HideAmount           bool                                     `json:"hideAmount"`
 	TagIds               []string                                 `json:"tagIds"`
 	Tags                 []*TransactionTagInfoResponse            `json:"tags,omitempty"`
@@ -575,6 +583,8 @@ func (t *Transaction) ToTransactionInfoResponse(tagIds []int64, editable bool) *
 		DestinationAccountId: destinationAccountId,
 		SourceAmount:         sourceAmount,
 		DestinationAmount:    destinationAmount,
+		Quantity:             t.Quantity,  // Lic
+		UnitPrice:            t.UnitPrice, // Lic
 		HideAmount:           t.HideAmount,
 		TagIds:               utils.Int64ArrayToStringArray(tagIds),
 		Comment:              t.Comment,

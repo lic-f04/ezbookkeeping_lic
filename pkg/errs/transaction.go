@@ -45,4 +45,7 @@ var (
 	ErrCannotMoveTransactionFromOrToHiddenAccount                  = NewNormalError(NormalSubcategoryTransaction, 38, http.StatusBadRequest, "cannot move transaction from or to hidden account")
 	ErrCannotMoveTransactionFromOrToParentAccount                  = NewNormalError(NormalSubcategoryTransaction, 39, http.StatusBadRequest, "cannot move transaction from or to parent account")
 	ErrCannotMoveTransactionBetweenAccountsWithDifferentCurrencies = NewNormalError(NormalSubcategoryTransaction, 40, http.StatusBadRequest, "cannot move transaction between accounts with different currencies")
+	ErrTransactionAmountCalculationMismatch                        = NewNormalError(NormalSubcategoryTransaction, 41, http.StatusBadRequest, "transaction amount does not match quantity × price")
+	ErrTransactionQuantityInvalid                                  = NewNormalError(NormalSubcategoryTransaction, 42, http.StatusBadRequest, "[transactions.TransactionImportHandler] quantity of transaction index:%d is invalid")
+	ErrTransactionUnitPriceInvalid                                 = NewNormalError(NormalSubcategoryTransaction, 43, http.StatusBadRequest, "[transactions.TransactionImportHandler] unit price of transaction index:%d is invalid")
 )

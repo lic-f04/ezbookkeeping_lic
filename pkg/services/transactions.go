@@ -961,6 +961,42 @@ func (s *TransactionService) ModifyTransaction(c core.Context, transaction *mode
 			updateCols = append(updateCols, "amount")
 		}
 
+		// Lic //
+
+		if transaction.Quantity != oldTransaction.Quantity {
+			updateCols = append(updateCols, "quantity")
+
+			// Пересчитать сумму если цена известна
+			if transaction.UnitPrice > 0 {
+				transaction.Amount = (transaction.Quantity * transaction.UnitPrice) / 1000
+				if !contains(updateCols, "amount") {
+					updateCols = append(updateCols, "amount")
+				}
+			}
+		}
+
+		if transaction.UnitPrice != oldTransaction.UnitPrice {
+			updateCols = append(updateCols, "unit_price")
+
+			// Пересчитать сумму если количество известно
+			if transaction.Quantity > 0 {
+				transaction.Amount = (transaction.Quantity * transaction.UnitPrice) / 1000
+				if !contains(updateCols, "amount") {
+					updateCols = append(updateCols, "amount")
+				}
+			}
+		}
+
+		// Если меняется сумма и есть quantity, пересчитать цену
+		if transaction.Amount != oldTransaction.Amount && transaction.Quantity > 0 {
+			transaction.UnitPrice = (transaction.Amount * 1000) / transaction.Quantity
+			if !contains(updateCols, "unit_price") {
+				updateCols = append(updateCols, "unit_price")
+			}
+		}
+
+		// Lic //
+
 		if transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT || transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN {
 			if transaction.RelatedAccountId != oldTransaction.RelatedAccountId {
 				updateCols = append(updateCols, "related_account_id")
@@ -2249,6 +2285,31 @@ func (s *TransactionService) doCreateTransaction(c core.Context, database *datas
 		return err
 	}
 
+	// Lic //
+
+	// Автоматический расчет суммы если quantity и unitPrice указаны
+	if transaction.Quantity > 0 && transaction.UnitPrice > 0 {
+		// Сумма = (Quantity / 1000) × (UnitPrice / 100) × 100 (для хранения в копейках)
+		// Упрощенно: Amount = (Quantity × UnitPrice) / 1000
+		calculatedAmount := (transaction.Quantity * transaction.UnitPrice) / 1000
+
+		// Если сумма не была явно установлена, используем расчетную
+		if transaction.Amount == 0 {
+			transaction.Amount = calculatedAmount
+		}
+	}
+
+	// Валидация: если все три поля указаны, проверяем соответствие
+	if transaction.Amount > 0 && transaction.Quantity > 0 && transaction.UnitPrice > 0 {
+		expectedAmount := (transaction.Quantity * transaction.UnitPrice) / 1000
+		// Допускаем погрешность в 1 единицу из-за округления
+		if abs(transaction.Amount-expectedAmount) > 1 {
+			return errs.ErrTransactionAmountCalculationMismatch // ← новый error
+		}
+	}
+
+	// Lic //
+
 	// Verify balance modification transaction and calculate real amount
 	if transaction.Type == models.TRANSACTION_DB_TYPE_MODIFY_BALANCE {
 		otherTransactionExists, err := sess.Cols("uid", "deleted", "account_id").Where("uid=? AND deleted=? AND account_id=?", transaction.Uid, false, sourceAccount.AccountId).Limit(1).Exist(&models.Transaction{})
@@ -2930,3 +2991,22 @@ func (s *TransactionService) isPicturesValid(sess *xorm.Session, transaction *mo
 
 	return nil
 }
+
+// Lic //
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}
+
+func abs(x int64) int64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// Lic //

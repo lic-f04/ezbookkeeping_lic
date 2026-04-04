@@ -95,6 +95,7 @@ const props = defineProps<{
     flipNegative?: boolean;
     hint?: string;
     show: boolean;
+    decimalScale?: number;
 }>();
 
 const emit = defineEmits<{
@@ -188,8 +189,25 @@ function getStringValue(value: number, hideZero: boolean): string {
     if (!isNumber(value)) {
         return '';
     }
+// Lic
+    // Для полей с decimalScale (количество, цена) значение хранится как есть, без умножения на 100
+    const decimalScale = props.decimalScale ?? 2;
+    let textualNumber: string;
 
-    const textualNumber = formatAmountToWesternArabicNumeralsWithoutDigitGrouping(value, props.currency);
+    // Если decimalScale явно указан (не 2 по умолчанию) или нет валюты - обрабатываем как обычное число
+    // Это нужно для количества (decimalScale=3) и цены (decimalScale=2, но хранится в единицах, не в центах)
+    if (props.decimalScale !== undefined || !props.currency) {
+        // Для не-денежных значений или когда decimalScale явно задан, форматируем вручную
+        const absValue = Math.abs(value);
+        const multiplier = Math.pow(10, decimalScale);
+        const integerPart = Math.floor(absValue * multiplier) / multiplier;
+        textualNumber = integerPart.toString();
+    } else {
+        textualNumber = formatAmountToWesternArabicNumeralsWithoutDigitGrouping(value, props.currency);
+    }
+// Lic
+
+
 
     const decimalSeparator = getCurrentDecimalSeparator();
     const decimalSeparatorPos = textualNumber.indexOf(decimalSeparator);
@@ -417,8 +435,22 @@ function confirm(): boolean {
 
         return true;
     } else {
-        let value: number = parseAmountFromWesternArabicNumerals(currentValue.value);
 
+// Lic
+        // let value: number = parseAmountFromWesternArabicNumerals(currentValue.value);
+        let value: number;
+
+        // Если decimalScale явно указан, парсим как обычное число (для количества и цены)
+        if (props.decimalScale !== undefined) {
+            value = parseFloat(currentValue.value.replace(',', '.'));
+            if (Number.isNaN(value)) {
+                value = 0;
+            }
+        } else {
+            // Для денежных значений используем стандартный парсинг с умножением на 100
+            value = parseAmountFromWesternArabicNumerals(currentValue.value);
+        }
+// Lic
         if (props.flipNegative) {
             value = -value;
         }

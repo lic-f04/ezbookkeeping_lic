@@ -28,6 +28,8 @@ export interface SetTransactionOptions {
     destinationAccountId?: string;
     amount?: number;
     destinationAmount?: number;
+    quantity?: number;           // Lic
+    unitPrice?: number;          // Lic
     tagIds?: string;
     comment?: string;
 }
@@ -55,6 +57,16 @@ export function setTransactionModelByTransaction(transaction: Transaction, trans
         transaction.destinationAmount = options.destinationAmount;
     }
 
+    // Lic //
+    if (isDefined(options.quantity)) {
+        transaction.quantity = options.quantity;
+    }
+
+    if (isDefined(options.unitPrice)) {
+        transaction.unitPrice = options.unitPrice;
+    }
+    // Lic //
+    
     if (allCategories[CategoryType.Expense] &&
         allCategories[CategoryType.Expense].length) {
         if (options.categoryId && options.categoryId !== '0') {
@@ -159,7 +171,7 @@ export function setTransactionModelByTransaction(transaction: Transaction, trans
     if (transaction2) {
         if (setContextData) {
             transaction.id = transaction2.id;
-        }
+       }
 
         transaction.type = transaction2.type;
 
@@ -192,6 +204,10 @@ export function setTransactionModelByTransaction(transaction: Transaction, trans
         } else {
             transaction.destinationAmount = 0;
         }
+
+        transaction.quantity = transaction2.quantity ?? 1; // Lic
+        transaction.unitPrice = transaction2.unitPrice ?? 0; // Lic
+
 
         transaction.hideAmount = transaction2.hideAmount;
         transaction.tagIds = transaction2.tagIds || [];

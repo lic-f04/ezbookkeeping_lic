@@ -22,6 +22,8 @@ export class Transaction implements TransactionInfoResponse {
     public destinationAccountId: string;
     public sourceAmount: number;
     public destinationAmount: number;
+    public quantity: number = 1; // Lic
+    public unitPrice: number = 0; // Lic
     public hideAmount: boolean;
     public tagIds: string[];
     public comment: string;
@@ -39,7 +41,7 @@ export class Transaction implements TransactionInfoResponse {
     private _gregorianCalendarDayOfMonth?: number = undefined; // only for displaying transaction in transaction list
     private _displayDayOfWeek?: WeekDay = undefined; // only for displaying transaction in transaction list
 
-    protected constructor(id: string, timeSequenceId: string, type: number, categoryId: string, time: number, timeZone: string | undefined, utcOffset: number, sourceAccountId: string, destinationAccountId: string, sourceAmount: number, destinationAmount: number, hideAmount: boolean, tagIds: string[], comment: string, editable: boolean) {
+    protected constructor(id: string, timeSequenceId: string, type: number, categoryId: string, time: number, timeZone: string | undefined, utcOffset: number, sourceAccountId: string, destinationAccountId: string, sourceAmount: number, destinationAmount: number, quantity: number, unitPrice: number, hideAmount: boolean, tagIds: string[], comment: string, editable: boolean) {
         this.id = id;
         this.timeSequenceId = timeSequenceId;
         this.type = type;
@@ -50,6 +52,8 @@ export class Transaction implements TransactionInfoResponse {
         this.destinationAccountId = destinationAccountId;
         this.sourceAmount = sourceAmount;
         this.destinationAmount = destinationAmount;
+        this.quantity = quantity; // Lic
+        this.unitPrice = unitPrice; // Lic
         this.hideAmount = hideAmount;
         this.tagIds = tagIds;
         this.comment = comment;
@@ -236,6 +240,8 @@ export class Transaction implements TransactionInfoResponse {
             destinationAccountId: this.type === TransactionType.Transfer ? this.destinationAccountId : '0',
             sourceAmount: this.sourceAmount,
             destinationAmount: this.type === TransactionType.Transfer ? this.destinationAmount : 0,
+            quantity: Math.round(this.quantity * 1000), // Lic
+            unitPrice: Math.round(this.unitPrice * 100), // Lic 
             hideAmount: this.hideAmount,
             tagIds: this.tagIds,
             pictureIds: this.getPictureIds(),
@@ -261,6 +267,8 @@ export class Transaction implements TransactionInfoResponse {
             destinationAccountId: this.type === TransactionType.Transfer ? this.destinationAccountId : '0',
             sourceAmount: this.sourceAmount,
             destinationAmount: this.type === TransactionType.Transfer ? this.destinationAmount : 0,
+            quantity: Math.round(this.quantity * 1000),  // Lic
+            unitPrice: Math.round(this.unitPrice * 100), // Lic
             hideAmount: this.hideAmount,
             tagIds: this.tagIds,
             pictureIds: this.getPictureIds(),
@@ -283,6 +291,8 @@ export class Transaction implements TransactionInfoResponse {
             sourceAmount: this.sourceAmount,
             destinationAccountId: this.type === TransactionType.Transfer ? this.destinationAccountId : '0',
             destinationAmount: this.type === TransactionType.Transfer ? this.destinationAmount : 0,
+            quantity: Math.round(this.quantity * 1000),      // Lic
+            unitPrice: Math.round(this.unitPrice * 100),     // Lic
             hideAmount: this.hideAmount,
             tagIds: this.tagIds,
             pictures: this.pictures,
@@ -303,6 +313,8 @@ export class Transaction implements TransactionInfoResponse {
             '', // destinationAccountId
             0, // sourceAmount
             0, // destinationAmount
+            1, // quantity=1
+            0, // unitPrice=0
             false, // hideAmount
             [], // tagIds
             '', // comment
@@ -323,6 +335,8 @@ export class Transaction implements TransactionInfoResponse {
             transactionResponse.destinationAccountId,
             transactionResponse.sourceAmount,
             transactionResponse.destinationAmount,
+            (transactionResponse.quantity ?? 0) / 1000,      // Lic
+            (transactionResponse.unitPrice ?? 0) / 100,      // Lic
             transactionResponse.hideAmount,
             transactionResponse.tagIds,
             transactionResponse.comment,
@@ -395,6 +409,8 @@ export class Transaction implements TransactionInfoResponse {
             transactionDraft.destinationAccountId ?? '', // destinationAccountId
             transactionDraft.sourceAmount ?? 0, // sourceAmount
             transactionDraft.destinationAmount ?? 0, // destinationAmount
+            (transactionDraft.quantity ?? 1000) / 1000,      // Lic
+            (transactionDraft.unitPrice ?? 0) / 100,      // Lic
             transactionDraft.hideAmount ?? false, // hideAmount
             transactionDraft.tagIds ?? [], // tagIds
             transactionDraft.comment ?? '', // comment
@@ -514,6 +530,8 @@ export interface TransactionDraft {
     readonly sourceAmount?: number;
     readonly destinationAccountId?: string;
     readonly destinationAmount?: number;
+    readonly quantity: number;           // Lic
+    readonly unitPrice: number;          // Lic
     readonly hideAmount?: boolean;
     readonly tagIds?: string[];
     readonly pictures?: TransactionPictureInfoBasicResponse[];
@@ -534,6 +552,8 @@ export interface TransactionCreateRequest {
     readonly destinationAccountId: string;
     readonly sourceAmount: number;
     readonly destinationAmount: number;
+    readonly quantity: number;           // Lic
+    readonly unitPrice: number;          // Lic
     readonly hideAmount: boolean;
     readonly tagIds: string[];
     readonly pictureIds: string[];
@@ -551,6 +571,8 @@ export interface TransactionModifyRequest {
     readonly destinationAccountId: string;
     readonly sourceAmount: number;
     readonly destinationAmount: number;
+    readonly quantity: number;           // Lic
+    readonly unitPrice: number;          // Lic
     readonly hideAmount: boolean;
     readonly tagIds: string[];
     readonly pictureIds: string[];
@@ -625,6 +647,8 @@ export interface TransactionInfoResponse {
     readonly destinationAccount?: AccountInfoResponse;
     readonly sourceAmount: number;
     readonly destinationAmount: number;
+    readonly quantity: number;           // Lic
+    readonly unitPrice: number;          // Lic
     readonly hideAmount: boolean;
     readonly tagIds: string[];
     readonly tags?: TransactionTagInfoResponse[];

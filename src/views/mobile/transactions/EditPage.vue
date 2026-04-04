@@ -73,9 +73,53 @@
                                   :currency="sourceAccountCurrency"
                                   v-model:show="showSourceAmountSheet"
                                   v-model="transaction.sourceAmount"
+                                  @update:model-value="onAmountChangeForMobile"
                 ></number-pad-sheet>
             </f7-list-item>
 
+            <!-- Lic  -->
+            <!-- ========== КОЛИЧЕСТВО И ЦЕНА (только для Расходов и Доходов) ========== -->
+            <f7-list-item
+                class="transaction-edit-amount ebk-large-amount"
+                link="#" no-chevron
+                :class="{ 'disabled': !hasVisibleExpenseCategories, 'readonly': mode === TransactionEditPageMode.View }"
+                :header="tt(sourceQuantityName)"
+                :title="transaction.quantity.toFixed(3)"
+                @click="showQuantitySheet = true"
+                v-if="showQuantityPriceFields"
+            >
+                <number-pad-sheet :min-value="0"
+                                  :max-value="TRANSACTION_MAX_AMOUNT"
+                                  :currency="''"
+                                  :decimal-scale="3"
+                                  v-model:show="showQuantitySheet"
+                                  v-model="transaction.quantity"
+                                  @update:model-value="onQuantityOrPriceChange"
+                ></number-pad-sheet>
+            </f7-list-item>
+
+            <f7-list-item
+                class="transaction-edit-amount ebk-large-amount"
+                link="#" no-chevron
+                :class="{ 'disabled': !hasVisibleExpenseCategories, 'readonly': mode === TransactionEditPageMode.View }"
+                :header="tt(sourceUnitPriceName)"
+                :title="`${transaction.unitPrice.toFixed(2)} ${sourceAccountCurrency}`"
+                @click="showUnitPriceSheet = true"
+                v-if="showQuantityPriceFields"
+            >
+                <number-pad-sheet :min-value="0"
+                                  :max-value="TRANSACTION_MAX_AMOUNT"
+                                  :currency="''"
+                                  :decimal-scale="2"
+                                  v-model:show="showUnitPriceSheet"
+                                  v-model="transaction.unitPrice"
+                                  @update:model-value="onQuantityOrPriceChange"
+                ></number-pad-sheet>
+            </f7-list-item>
+            <!-- ========== КОНЕЦ ПОЛЕЙ КОЛИЧЕСТВО И ЦЕНА ========== -->
+
+            <!-- Lic  -->
+             
             <f7-list-item
                 class="transaction-edit-amount text-color-primary"
                 link="#" no-chevron
@@ -606,6 +650,8 @@ const {
     title,
     quickSaveButtonTitle,
     sourceAmountTitle,
+    sourceQuantityName,
+    sourceUnitPriceName,
     sourceAccountTitle,
     transferInAmountTitle,
     sourceAccountName,
@@ -647,7 +693,9 @@ const showQuickSavePopover = ref<boolean>(false);
 const showTimezonePopup = ref<boolean>(false);
 const showGeoLocationActionSheet = ref<boolean>(false);
 const showMoreActionSheet = ref<boolean>(false);
-const showSourceAmountSheet = ref<boolean>(false);
+const showSourceAmountSheet = ref<boolean>(false); // Lic
+const showQuantitySheet = ref<boolean>(false); // Lic
+const showUnitPriceSheet = ref<boolean>(false);
 const showDestinationAmountSheet = ref<boolean>(false);
 const showCategorySheet = ref<boolean>(false);
 const showSourceAccountSheet = ref<boolean>(false);
@@ -828,6 +876,70 @@ const transactionDisplayScheduledEndDate = computed<string>(() => {
         return tt('No limit');
     }
 });
+
+// Lic
+    // ========== ВЫЧИСЛЯЕМЫЕ СВОЙСТВА ДЛЯ КОЛИЧЕСТВА И ЦЕНЫ ==========
+    const showQuantityPriceFields = computed<boolean>(() => {
+        return transaction.value.type === TransactionType.Expense ||
+            transaction.value.type === TransactionType.Income;
+    });
+    // ========== КОНЕЦ ВЫЧИСЛЯЕМЫХ СВОЙСТВ ==========
+
+
+    // ========== МЕТОДЫ ДЛЯ ПЕРЕСЧЕТА СУММЫ/ЦЕНЫ/КОЛИЧЕСТВА ==========
+
+    /**
+     * Обработчик изменения количества или цены
+     * Пересчитывает сумму: Amount = Quantity × UnitPrice
+     */
+    function onQuantityOrPriceChange(): void {
+        if (!transaction.value || !showQuantityPriceFields.value) {
+            return;
+        }
+
+        const quantity = transaction.value.quantity || 0;
+        const unitPrice = transaction.value.unitPrice || 0;
+
+        if (quantity > 0 && unitPrice > 0) {
+            // Сумма = Количество × Цена (округляем до 2 знаков после запятой)
+            const calculatedAmount = Math.round(quantity * unitPrice * 100);
+            transaction.value.sourceAmount = calculatedAmount;
+        } else if (quantity > 0 && unitPrice === 0) {
+            // Если цена 0, то и сумма должна быть 0
+            transaction.value.sourceAmount = 0;
+        } else if (quantity === 0 && unitPrice > 0) {
+            // Если количество 0, то и сумма должна быть 0
+            transaction.value.sourceAmount = 0;
+        }
+    }
+
+    /**
+     * Обработчик изменения суммы для мобильной версии
+     * Пересчитывает цену: UnitPrice = Amount / Quantity
+     */
+    function onAmountChangeForMobile(): void {
+        if (!transaction.value || !showQuantityPriceFields.value) {
+            return;
+        }
+
+        const quantity = transaction.value.quantity || 0;
+        const amount = transaction.value.sourceAmount || 0;
+
+        if (quantity > 0 && amount > 0) {
+            // Цена = Сумма / Количество (unitPrice хранится в единицах, amount в центах)
+            const calculatedPrice = amount / quantity / 100;
+            transaction.value.unitPrice = Math.round(calculatedPrice * 100) / 100;
+        } else if (quantity > 0 && amount === 0) {
+            // Если сумма 0, то и цена должна быть 0
+            transaction.value.unitPrice = 0;
+        } else if (quantity === 0 && amount > 0) {
+            // Если количество 0, но сумма есть - цена не определена, оставляем без изменений
+            // или можно установить 0
+            transaction.value.unitPrice = 0;
+        }
+    }
+    // ========== КОНЕЦ МЕТОДОВ ДЛЯ ПЕРЕСЧЕТА ==========
+// Lic
 
 function getPageTypeNameMode(): { type: TransactionEditPageType, mode: TransactionEditPageMode } | null {
     if (props.f7route.path === '/transaction/add') {

@@ -1238,6 +1238,8 @@ func (a *TransactionsApi) TransactionModifyHandler(c *core.WebContext) (any, *er
 		TimezoneUtcOffset: transactionModifyReq.UtcOffset,
 		AccountId:         transactionModifyReq.SourceAccountId,
 		Amount:            transactionModifyReq.SourceAmount,
+		Quantity:          transactionModifyReq.Quantity,  // Lic
+		UnitPrice:         transactionModifyReq.UnitPrice, // Lic
 		HideAmount:        transactionModifyReq.HideAmount,
 		Comment:           transactionModifyReq.Comment,
 	}
@@ -1257,6 +1259,8 @@ func (a *TransactionsApi) TransactionModifyHandler(c *core.WebContext) (any, *er
 		newTransaction.TimezoneUtcOffset == transaction.TimezoneUtcOffset &&
 		newTransaction.AccountId == transaction.AccountId &&
 		newTransaction.Amount == transaction.Amount &&
+		newTransaction.Quantity == transaction.Quantity && //Lic
+		newTransaction.UnitPrice == transaction.UnitPrice && //Lic
 		(transaction.Type != models.TRANSACTION_DB_TYPE_TRANSFER_OUT || newTransaction.RelatedAccountId == transaction.RelatedAccountId) &&
 		(transaction.Type != models.TRANSACTION_DB_TYPE_TRANSFER_OUT || newTransaction.RelatedAccountAmount == transaction.RelatedAccountAmount) &&
 		newTransaction.HideAmount == transaction.HideAmount &&
@@ -1839,6 +1843,19 @@ func (a *TransactionsApi) TransactionImportHandler(c *core.WebContext) (any, *er
 			return nil, errs.ErrTransactionDestinationAmountCannotBeSet
 		}
 
+		// Lic //
+		// ← ДОБАВИТЬ ПРОВЕРКУ ДЛЯ QUANTITY И UNITPRICE
+		if transactionCreateReq.Quantity < 0 {
+			log.Warnf(c, "[transactions.TransactionImportHandler] quantity of transaction index:%d is invalid", i)
+			return nil, errs.ErrTransactionQuantityInvalid
+		}
+
+		if transactionCreateReq.UnitPrice < 0 {
+			log.Warnf(c, "[transactions.TransactionImportHandler] unit price of transaction index:%d is invalid", i)
+			return nil, errs.ErrTransactionUnitPriceInvalid
+		}
+		// Lic //
+
 		newTransactionTagIdsMap[i] = tagIds
 	}
 
@@ -2168,6 +2185,8 @@ func (a *TransactionsApi) createNewTransactionModel(uid int64, transactionCreate
 		TimezoneUtcOffset: transactionCreateReq.UtcOffset,
 		AccountId:         transactionCreateReq.SourceAccountId,
 		Amount:            transactionCreateReq.SourceAmount,
+		Quantity:          transactionCreateReq.Quantity,  // Lic
+		UnitPrice:         transactionCreateReq.UnitPrice, // Lic
 		HideAmount:        transactionCreateReq.HideAmount,
 		Comment:           transactionCreateReq.Comment,
 		CreatedIp:         clientIp,

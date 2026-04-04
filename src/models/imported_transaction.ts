@@ -16,6 +16,8 @@ export class ImportTransaction implements ImportTransactionResponse {
     public originalDestinationAccountCurrency?: string;
     public sourceAmount: number;
     public destinationAmount: number;
+    public quantity: number;
+    public unitPrice: number;
     public tagIds: string[];
     public originalTagNames: string[];
     public comment: string;
@@ -42,6 +44,8 @@ export class ImportTransaction implements ImportTransactionResponse {
         this.originalDestinationAccountCurrency = response.originalDestinationAccountCurrency;
         this.sourceAmount = response.sourceAmount;
         this.destinationAmount = response.destinationAmount || 0;
+        this.quantity = response.quantity;
+        this.unitPrice = response.unitPrice;
         this.tagIds = response.tagIds || [];
         this.originalTagNames = response.originalTagNames || [];
         this.comment = response.comment;
@@ -65,6 +69,8 @@ export class ImportTransaction implements ImportTransactionResponse {
             destinationAccountId: this.type === TransactionType.Transfer ? this.destinationAccountId : '0',
             sourceAmount: this.sourceAmount,
             destinationAmount: this.type === TransactionType.Transfer ? this.destinationAmount : 0,
+            quantity: this.quantity,
+            unitPrice: this.unitPrice,
             hideAmount: false,
             tagIds: this.tagIds,
             pictureIds: [],
@@ -135,6 +141,8 @@ export interface ImportTransactionResponse {
     readonly originalDestinationAccountCurrency?: string;
     readonly sourceAmount: number;
     readonly destinationAmount?: number;
+    readonly quantity: number;
+    readonly unitPrice: number;
     readonly tagIds: string[];
     readonly originalTagNames: string[];
     readonly comment: string;
