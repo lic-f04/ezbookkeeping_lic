@@ -928,7 +928,7 @@ const transactionDisplayScheduledEndDate = computed<string>(() => {
         if (quantity > 0 && amount > 0) {
             // Цена = Сумма / Количество (unitPrice хранится в единицах, amount в центах)
             const calculatedPrice = amount / quantity / 100;
-            transaction.value.unitPrice = Math.round(calculatedPrice * 100) / 100;
+            transaction.value.unitPrice = Math.round(calculatedPrice * 1000) / 1000;
         } else if (quantity > 0 && amount === 0) {
             // Если сумма 0, то и цена должна быть 0
             transaction.value.unitPrice = 0;

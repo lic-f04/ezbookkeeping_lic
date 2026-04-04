@@ -391,8 +391,25 @@ function paste(): void {
 
 function confirm(): boolean {
     if (currentSymbol.value && currentValue.value.length >= 1) {
-        const previous = parseAmountFromWesternArabicNumerals(previousValue.value);
-        const current = parseAmountFromWesternArabicNumerals(currentValue.value);
+        // Lic
+        // Для полей с decimalScale (количество, цена) нужно парсить как обычные числа
+        let previous: number;
+        let current: number;
+
+        if (props.decimalScale !== undefined) {
+            previous = parseFloat(previousValue.value.replace(',', '.'));
+            current = parseFloat(currentValue.value.replace(',', '.'));
+            if (Number.isNaN(previous)) {
+                previous = 0;
+            }
+            if (Number.isNaN(current)) {
+                current = 0;
+            }
+        } else {
+            previous = parseAmountFromWesternArabicNumerals(previousValue.value);
+            current = parseAmountFromWesternArabicNumerals(currentValue.value);
+        }
+        // Lic
         let finalValue = 0;
 
         switch (currentSymbol.value) {
@@ -403,7 +420,14 @@ function confirm(): boolean {
                 finalValue = previous - current;
                 break;
             case '×':
-                finalValue = Math.trunc(previous * current / 100);
+// Lic
+                // Для не-денежных значений не нужно делить на 100
+                if (props.decimalScale !== undefined) {
+                    finalValue = previous * current;
+                } else {
+                    finalValue = Math.trunc(previous * current / 100);
+                }
+// Lic
                 break;
             default:
                 finalValue = previous;
