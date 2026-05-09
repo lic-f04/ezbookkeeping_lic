@@ -297,7 +297,7 @@ func (s *TransactionTemplateService) isTemplateValid(sess *xorm.Session, templat
 		}
 	}
 
-	if sourceAccount.Type == models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS || (destinationAccount != nil && destinationAccount.Type == models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS) {
+	if sourceAccount.Type == models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS || destinationAccount.Type == models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS {
 		return errs.ErrCannotAddTransactionToParentAccount
 	}
 

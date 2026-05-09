@@ -491,28 +491,29 @@ func (s *TransactionCategoryService) GetVisibleSubCategoryNameMapByList(categori
 
 		var categories map[string]*models.TransactionCategory
 
-		if category.Type == models.CATEGORY_TYPE_INCOME {
+		switch category.Type {
+		case models.CATEGORY_TYPE_INCOME:
 			categories, exists = incomeCategoryMap[category.Name]
 
 			if !exists {
 				categories = make(map[string]*models.TransactionCategory)
 				incomeCategoryMap[category.Name] = categories
 			}
-		} else if category.Type == models.CATEGORY_TYPE_EXPENSE {
+		case models.CATEGORY_TYPE_EXPENSE:
 			categories, exists = expenseCategoryMap[category.Name]
 
 			if !exists {
 				categories = make(map[string]*models.TransactionCategory)
 				expenseCategoryMap[category.Name] = categories
 			}
-		} else if category.Type == models.CATEGORY_TYPE_TRANSFER {
+		case models.CATEGORY_TYPE_TRANSFER:
 			categories, exists = transferCategoryMap[category.Name]
 
 			if !exists {
 				categories = make(map[string]*models.TransactionCategory)
 				transferCategoryMap[category.Name] = categories
 			}
-		} else {
+		default:
 			continue
 		}
 
@@ -569,9 +570,7 @@ func (s *TransactionCategoryService) GetCategoryOrSubCategoryIds(c core.Context,
 				categoryIdsMap[subCategory.ParentCategoryId] = 1
 			}
 
-			if _, exists := categoryIdsMap[subCategory.CategoryId]; exists {
-				delete(categoryIdsMap, subCategory.CategoryId)
-			}
+			delete(categoryIdsMap, subCategory.CategoryId)
 
 			allCategoryIds = append(allCategoryIds, subCategory.CategoryId)
 		}

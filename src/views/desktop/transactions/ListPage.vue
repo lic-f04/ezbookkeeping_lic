@@ -62,7 +62,7 @@
                                             <span>{{ tt('Transaction List') }}</span>
                                             <v-btn class="ms-3" color="default" variant="outlined"
                                                    :disabled="loading || !canAddTransaction" @click="add()">
-                                                {{ tt('Add') }}
+                                                {{ tt('Add Transaction') }}
                                                 <v-menu activator="parent" max-height="500" :open-on-hover="true" v-if="isTransactionFromAIImageRecognitionEnabled() || (allTransactionTemplates && allTransactionTemplates.length)">
                                                     <v-list>
                                                         <v-list-item key="AIImageRecognition"
@@ -78,7 +78,11 @@
                                                     </v-list>
                                                 </v-menu>
                                             </v-btn>
-                                            <v-btn class="ms-3" color="default" variant="outlined"
+                                            <v-btn class="ms-3" color="primary" variant="outlined"
+                                                   :disabled="loading" @click="addReceipt()">
+                                                 {{ tt('Add Receipt') }}
+                                             </v-btn>
+                                             <v-btn class="ms-3" color="default" variant="outlined"
                                                    :disabled="loading" @click="importTransaction"
                                                    v-if="isDataImportingEnabled()">
                                                 {{ tt('Import') }}
@@ -318,6 +322,7 @@
                                                     </v-list>
                                                 </v-menu>
                                             </th>
+                                            <th class="transaction-table-column-description text-no-wrap">{{ tt('Description') }}</th>
                                             <th class="transaction-table-column-amount text-no-wrap">
                                                 <v-menu ref="amountFilterMenu" class="transaction-amount-menu"
                                                         eager location="bottom" max-height="500"
@@ -507,7 +512,6 @@
                                                     </v-list>
                                                 </v-menu>
                                             </th>
-                                            <th class="transaction-table-column-description text-no-wrap">{{ tt('Description') }}</th>
                                         </tr>
                                         </thead>
 
@@ -526,10 +530,10 @@
                                         </tbody>
 
                                         <tbody :key="transaction.id"
-                                               :class="{ 'disabled': loading, 'has-bottom-border': idx < transactions.length - 1 }"
-                                               v-for="(transaction, idx) in transactions">
+                                               :class="{ 'disabled': loading, 'has-bottom-border': idx < displayTransactions.length - 1 }"
+                                               v-for="(transaction, idx) in displayTransactions">
                                             <tr class="transaction-list-row-date no-hover text-sm"
-                                                v-if="pageType === TransactionListPageType.List.type && (idx === 0 || (idx > 0 && (transaction.gregorianCalendarYearDashMonthDashDay !== transactions[idx - 1]!.gregorianCalendarYearDashMonthDashDay)))">
+                                                 v-if="pageType === TransactionListPageType.List.type && (idx === 0 || (idx > 0 && (transaction.gregorianCalendarYearDashMonthDashDay !== displayTransactions[idx - 1]!.gregorianCalendarYearDashMonthDashDay)))">
                                                 <td :colspan="showTagInTransactionListPage ? 6 : 5" class="font-weight-bold">
                                                     <div class="d-flex align-center">
                                                         <span>{{ getDisplayLongDate(transaction) }}</span>
@@ -540,6 +544,38 @@
                                                     </div>
                                                 </td>
                                             </tr>
+                                            <template v-if="transaction.receiptSummary">
+                                                <tr class="transaction-table-row-data text-sm cursor-pointer transaction-receipt-row"
+                                                    @click="show(transaction)">
+                                                    <td class="transaction-table-column-time">
+                                                        <div class="d-flex flex-column">
+                                                            <span>{{ getDisplayTime(transaction) }}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td class="transaction-table-column-category">
+                                                        <div class="d-flex align-center">
+                                                             <v-icon size="24" :icon="mdiReceiptTextOutline" class="text-secondary" />
+                                                            <span class="ms-2">{{ tt('Receipt') }}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td class="transaction-table-column-description text-truncate">
+                                                        {{ transaction.receiptSummary.place || transaction.receiptSummary.comment }}
+                                                    </td>
+                                                    <td class="transaction-table-column-amount" :class="{ 'text-income': (transaction.receiptSummary?.totalAmount ?? 0) > 0, 'text-expense': (transaction.receiptSummary?.totalAmount ?? 0) < 0 }">
+                                                        <div>
+                                                            <span>{{ formatReceiptAmount(transaction) }}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td class="transaction-table-column-account">
+                                                        <div class="d-flex align-center">
+                                                            <span v-if="transaction.receiptSummary.accountId && accountsStore.allAccountsMap[transaction.receiptSummary.accountId]">{{ accountsStore.allAccountsMap[transaction.receiptSummary.accountId]?.name }}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td class="transaction-table-column-tags" v-if="showTagInTransactionListPage">
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                            <template v-else>
                                             <tr class="transaction-table-row-data text-sm cursor-pointer"
                                                 @click="show(transaction)">
                                                 <td class="transaction-table-column-time">
@@ -567,6 +603,9 @@
                                                         </span>
                                                     </div>
                                                 </td>
+                                                <td class="transaction-table-column-description text-truncate">
+                                                    {{ transaction.comment }}
+                                                </td>
                                                 <td class="transaction-table-column-amount" :class="{ 'text-expense': transaction.type === TransactionType.Expense, 'text-income': transaction.type === TransactionType.Income }">
                                                     <div v-if="transaction.sourceAccount">
                                                         <span>{{ getDisplayAmount(transaction) }}</span>
@@ -588,10 +627,8 @@
                                                             :text="tt('None')"
                                                             v-if="!transaction.tagIds || !transaction.tagIds.length"/>
                                                 </td>
-                                                <td class="transaction-table-column-description text-truncate">
-                                                    {{ transaction.comment }}
-                                                </td>
                                             </tr>
+                                            </template>
                                         </tbody>
                                     </v-table>
 
@@ -622,6 +659,7 @@
                             @error="onShowDateRangeError" />
 
     <edit-dialog ref="editDialog" :type="TransactionEditPageType.Transaction" />
+    <receipt-detail-dialog ref="receiptDetailDialog" />
     <a-i-image-recognition-dialog ref="aiImageRecognitionDialog" />
     <import-dialog ref="importDialog" :persistent="true" />
 
@@ -652,6 +690,7 @@ import SnackBar from '@/components/desktop/SnackBar.vue';
 import EditDialog from './list/dialogs/EditDialog.vue';
 import AIImageRecognitionDialog from './list/dialogs/AIImageRecognitionDialog.vue';
 import ImportDialog from './import/ImportDialog.vue';
+import ReceiptDetailDialog from '@/views/desktop/receipts/dialogs/ReceiptDetailDialog.vue';
 import AccountFilterSettingsCard from '@/views/desktop/common/cards/AccountFilterSettingsCard.vue';
 import CategoryFilterSettingsCard from '@/views/desktop/common/cards/CategoryFilterSettingsCard.vue';
 import TransactionTagFilterSettingsCard from '@/views/desktop/common/cards/TransactionTagFilterSettingsCard.vue';
@@ -738,7 +777,8 @@ import {
     mdiArrowRight,
     mdiPound,
     mdiMagicStaff,
-    mdiTextBoxOutline
+    mdiTextBoxOutline,
+    mdiReceiptTextOutline
 } from '@mdi/js';
 
 interface TransactionListProps {
@@ -761,6 +801,7 @@ type SnackBarType = InstanceType<typeof SnackBar>;
 type EditDialogType = InstanceType<typeof EditDialog>;
 type AIImageRecognitionDialogType = InstanceType<typeof AIImageRecognitionDialog>;
 type ImportDialogType = InstanceType<typeof ImportDialog>;
+type ReceiptDetailDialogType = InstanceType<typeof ReceiptDetailDialog>;    
 
 interface TransactionListDisplayTotalAmount {
     income: string;
@@ -775,7 +816,8 @@ const {
     tt,
     getAllRecentMonthDateRanges,
     getWeekdayLongName,
-    getCurrentNumeralSystemType
+    getCurrentNumeralSystemType,
+    formatAmountToLocalizedNumerals
 } = useI18n();
 
 const {
@@ -851,6 +893,7 @@ const snackbar = useTemplateRef<SnackBarType>('snackbar');
 const editDialog = useTemplateRef<EditDialogType>('editDialog');
 const aiImageRecognitionDialog = useTemplateRef<AIImageRecognitionDialogType>('aiImageRecognitionDialog');
 const importDialog = useTemplateRef<ImportDialogType>('importDialog');
+const receiptDetailDialog = useTemplateRef<ReceiptDetailDialogType>('receiptDetailDialog');
 
 const activeTab = ref<string>('transactionPage');
 const currentPage = ref<number>(1);
@@ -940,6 +983,23 @@ const transactions = computed<Transaction[]>(() => {
     } else {
         return [];
     }
+});
+
+const displayTransactions = computed<Transaction[]>(() => {
+    const seenReceiptIds = new Set<string>();
+    const result: Transaction[] = [];
+
+    for (const transaction of transactions.value) {
+        if (transaction.receiptId && transaction.receiptSummary) {
+            if (seenReceiptIds.has(transaction.receiptId)) {
+                continue;
+            }
+            seenReceiptIds.add(transaction.receiptId);
+        }
+        result.push(transaction);
+    }
+
+    return result;
 });
 
 const recentDateRangeIndex = computed<number>({
@@ -1566,6 +1626,16 @@ function add(template?: TransactionTemplate): void {
     });
 }
 
+function addReceipt(): void {
+    receiptDetailDialog.value?.open().then(() => {
+        reload(false, false);
+    }).catch(error => {
+        if (error) {
+            snackbar.value?.showError(error);
+        }
+    });
+}
+
 function addByRecognizingImage(): void {
     aiImageRecognitionDialog.value?.open().then(result => {
         editDialog.value?.open({
@@ -1635,7 +1705,30 @@ function exportTransactions(fileExtension: string): void {
     });
 }
 
+function formatReceiptAmount(transaction: Transaction): string {
+    const summary = transaction.receiptSummary;
+    if (!summary) return '';
+
+    const amount = Math.abs(summary.totalAmount);
+    const account = summary.accountId ? accountsStore.allAccountsMap[summary.accountId] : undefined;
+    if (account) {
+        return `${formatAmountToLocalizedNumerals(amount, account.currency)} ${account.currency}`;
+    }
+    return formatAmountToLocalizedNumerals(amount);
+}
+
 function show(transaction: Transaction): void {
+    if (transaction.receiptSummary) {
+        receiptDetailDialog.value?.open({ id: transaction.receiptSummary.id }).then(result => {
+            reload(false, false);
+        }).catch(error => {
+            if (error) {
+                snackbar.value?.showError(error);
+            }
+        });
+        return;
+    }
+
     editDialog.value?.open({
         id: transaction.id,
         currentTransaction: transaction

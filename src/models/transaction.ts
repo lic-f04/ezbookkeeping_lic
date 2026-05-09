@@ -7,6 +7,7 @@ import { Account, type AccountInfoResponse } from './account.ts';
 import { TransactionCategory, type TransactionCategoryInfoResponse } from './transaction_category.ts';
 import { TransactionTag, type TransactionTagInfoResponse } from './transaction_tag.ts';
 import { TransactionPicture, type TransactionPictureInfoBasicResponse } from './transaction_picture_info.ts';
+import type { ReceiptSummaryResponse } from './receipt.ts';
 
 export class Transaction implements TransactionInfoResponse {
     public id: string;
@@ -28,6 +29,8 @@ export class Transaction implements TransactionInfoResponse {
     public tagIds: string[];
     public comment: string;
     public editable: boolean;
+    public receiptId: string = '';
+    public receiptSummary?: ReceiptSummaryResponse;
 
     private _pictures?: TransactionPicture[];
     private _geoLocation?: TransactionGeoLocation;
@@ -41,7 +44,7 @@ export class Transaction implements TransactionInfoResponse {
     private _gregorianCalendarDayOfMonth?: number = undefined; // only for displaying transaction in transaction list
     private _displayDayOfWeek?: WeekDay = undefined; // only for displaying transaction in transaction list
 
-    protected constructor(id: string, timeSequenceId: string, type: number, categoryId: string, time: number, timeZone: string | undefined, utcOffset: number, sourceAccountId: string, destinationAccountId: string, sourceAmount: number, destinationAmount: number, quantity: number, unitPrice: number, hideAmount: boolean, tagIds: string[], comment: string, editable: boolean) {
+    protected constructor(id: string, timeSequenceId: string, type: number, categoryId: string, time: number, timeZone: string | undefined, utcOffset: number, sourceAccountId: string, destinationAccountId: string, sourceAmount: number, destinationAmount: number, quantity: number, unitPrice: number, hideAmount: boolean, tagIds: string[], comment: string, editable: boolean, receiptId: string = '') {
         this.id = id;
         this.timeSequenceId = timeSequenceId;
         this.type = type;
@@ -58,6 +61,7 @@ export class Transaction implements TransactionInfoResponse {
         this.tagIds = tagIds;
         this.comment = comment;
         this.editable = editable;
+        this.receiptId = receiptId;
         this.setCategoryId(categoryId);
     }
 
@@ -247,6 +251,7 @@ export class Transaction implements TransactionInfoResponse {
             pictureIds: this.getPictureIds(),
             comment: this.comment,
             geoLocation: this.getNormalizedGeoLocation(),
+            receiptId: this.receiptId || undefined,
             clientSessionId: clientSessionId
         };
     }
@@ -260,6 +265,7 @@ export class Transaction implements TransactionInfoResponse {
 
         return {
             id: this.id,
+            type: this.type,
             categoryId: categoryId,
             time: this.time,
             utcOffset: this.utcOffset,
@@ -300,7 +306,7 @@ export class Transaction implements TransactionInfoResponse {
         };
     }
 
-    public static createNewTransaction(type: number, time: number, timeZone: string, utcOffset: number): Transaction {
+    public static createNewTransaction(type: number, time: number, timeZone: string, utcOffset: number, receiptId: string = ''): Transaction {
         return new Transaction(
             '', // id
             '', // timeSequenceId
@@ -318,7 +324,8 @@ export class Transaction implements TransactionInfoResponse {
             false, // hideAmount
             [], // tagIds
             '', // comment
-            true // editable
+            true, // editable
+            receiptId
         );
     }
 
@@ -340,7 +347,8 @@ export class Transaction implements TransactionInfoResponse {
             transactionResponse.hideAmount,
             transactionResponse.tagIds,
             transactionResponse.comment,
-            transactionResponse.editable
+            transactionResponse.editable,
+            transactionResponse.receiptId ?? ''
         );
 
         if (transactionResponse.category) {
@@ -372,6 +380,8 @@ export class Transaction implements TransactionInfoResponse {
         if (transactionResponse.geoLocation) {
             transaction.setLatitudeAndLongitude(transactionResponse.geoLocation.latitude, transactionResponse.geoLocation.longitude);
         }
+
+        transaction.receiptSummary = transactionResponse.receiptSummary;
 
         return transaction;
     }
@@ -559,11 +569,13 @@ export interface TransactionCreateRequest {
     readonly pictureIds: string[];
     readonly comment: string;
     readonly geoLocation?: TransactionGeoLocationRequest;
+    readonly receiptId?: string;
     readonly clientSessionId: string;
 }
 
 export interface TransactionModifyRequest {
     readonly id: string;
+    readonly type?: number;
     readonly categoryId: string;
     readonly time: number;
     readonly utcOffset: number;
@@ -656,6 +668,8 @@ export interface TransactionInfoResponse {
     readonly comment: string;
     readonly geoLocation?: TransactionGeoLocationResponse;
     readonly editable: boolean;
+    readonly receiptId?: string;
+    readonly receiptSummary?: ReceiptSummaryResponse;
 }
 
 export interface TransactionStatisticRequest {

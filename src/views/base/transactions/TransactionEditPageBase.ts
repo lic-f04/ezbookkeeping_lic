@@ -436,7 +436,8 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
                 quantity: options?.quantity,           // Lic
                 unitPrice: options?.unitPrice,         // Lic
                 tagIds: options?.tagIds,
-                comment: options?.comment
+                comment: options?.comment,
+                receiptId: options?.receiptId
             },
             setContextData
         );

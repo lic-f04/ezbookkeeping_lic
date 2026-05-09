@@ -17,7 +17,7 @@
             </f7-nav-title>
             <f7-nav-right :class="{ 'navbar-compact-icons': true, 'disabled': loading }">
                 <f7-link icon-f7="search" @click="toggleSearchbar"></f7-link>
-                <f7-link icon-f7="plus" :class="{ 'disabled': !canAddTransaction }" @click="add"></f7-link>
+                <f7-link icon-f7="plus" :class="{ 'disabled': !canAddTransaction }" @click="showAddActionSheet = true"></f7-link>
             </f7-nav-right>
 
             <f7-subnavbar :inner="false" v-if="showSearchbar">
@@ -157,7 +157,7 @@
         </f7-list>
 
         <f7-block class="combination-list-wrapper margin-vertical" :class="{ 'no-accordion-toggle': pageType !== TransactionListPageType.List.type }"
-                  :key="transactionMonthList.yearDashMonth" v-for="(transactionMonthList) in transactions">
+                  :key="transactionMonthList.yearDashMonth" v-for="(transactionMonthList) in displayTransactions">
             <f7-accordion-item :opened="transactionMonthList.opened"
                                @accordion:open="collapseTransactionMonthList(transactionMonthList, false)"
                                @accordion:opened="onTransactionMonthListCollapseStateChanged"
@@ -198,7 +198,7 @@
                         <f7-list-item swipeout chevron-center accordion-item
                                       class="transaction-info"
                                       :id="getTransactionDomId(transaction)"
-                                      :link="`/transaction/detail?id=${transaction.id}&type=${transaction.type}`"
+                                      :link="transaction.receiptSummary ? `/receipt/detail?id=${transaction.receiptSummary.id}` : `/transaction/detail?id=${transaction.id}&type=${transaction.type}`"
                                       :key="transaction.id"
                                       v-for="(transaction, idx) in transactionMonthList.items"
                         >
@@ -216,11 +216,12 @@
                                 <div class="display-flex no-padding-horizontal">
                                     <div class="item-media">
                                         <div class="transaction-icon display-flex align-items-center">
+                                            <f7-icon f7="doc_text" color="gray" v-if="transaction.receiptSummary"></f7-icon>
                                             <ItemIcon icon-type="category"
                                                       :icon-id="transaction.category.icon"
                                                       :color="transaction.category.color"
-                                                      v-if="transaction.category && transaction.category.color"></ItemIcon>
-                                            <f7-icon v-else-if="!transaction.category || !transaction.category.color"
+                                                      v-else-if="transaction.category && transaction.category.color"></ItemIcon>
+                                            <f7-icon v-else
                                                      f7="pencil_ellipsis_rectangle">
                                             </f7-icon>
                                         </div>
@@ -228,32 +229,53 @@
                                     <div class="actual-item-inner">
                                         <div class="item-title-row">
                                             <div class="item-title">
-                                                <div class="transaction-category-name no-padding">
-                                                    <span v-if="transaction.type === TransactionType.ModifyBalance">
+                                                <div class="transaction-title-with-sub">
+                                                    <div class="transaction-title-primary" v-if="transaction.receiptSummary">
+                                                        {{ transaction.receiptSummary.place || transaction.receiptSummary.comment || tt('Receipt') }}
+                                                    </div>
+                                                    <div class="transaction-title-primary" v-else>
+                                                        {{ transaction.comment || getTransactionTypeName(transaction.type, 'Transaction') }}
+                                                    </div>
+                                                    <div class="transaction-title-secondary" v-if="transaction.receiptSummary">
+                                                        {{ transaction.receiptSummary.comment || transaction.receiptSummary.place || '' }}
+                                                    </div>
+                                                    <div class="transaction-title-secondary" v-else-if="transaction.type === TransactionType.ModifyBalance">
                                                         {{ tt('Modify Balance') }}
-                                                    </span>
-                                                        <span v-else-if="transaction.type !== TransactionType.ModifyBalance && transaction.category">
+                                                    </div>
+                                                    <div class="transaction-title-secondary" v-else-if="transaction.category">
                                                         {{ transaction.category.name }}
-                                                    </span>
-                                                        <span v-else-if="transaction.type !== TransactionType.ModifyBalance && !transaction.category">
+                                                    </div>
+                                                    <div class="transaction-title-secondary" v-else>
                                                         {{ getTransactionTypeName(transaction.type, 'Transaction') }}
-                                                    </span>
+                                                    </div>
                                                 </div>
                                             </div>
                                             <div class="item-after">
-                                                <div class="transaction-amount" v-if="transaction.sourceAccount"
+                                                <div class="transaction-amount" v-if="transaction.receiptSummary"
+                                                     :class="{ 'text-expense': transaction.receiptSummary.totalAmount < 0, 'text-income': transaction.receiptSummary.totalAmount > 0 }">
+                                                    <span>{{ getDisplayReceiptAmount(transaction) }}</span>
+                                                </div>
+                                                <div class="transaction-amount" v-else-if="transaction.sourceAccount"
                                                      :class="{ 'text-expense': transaction.type === TransactionType.Expense, 'text-income': transaction.type === TransactionType.Income }">
                                                     <span>{{ getDisplayAmount(transaction) }}</span>
                                                 </div>
-                                            </div>
-                                        </div>
-                                        <div class="item-text">
-                                            <div class="transaction-description" v-if="transaction.comment">
-                                                <span>{{ transaction.comment }}</span>
+                                                <div class="transaction-after-footer">
+                                                    <template v-if="transaction.receiptSummary">
+                                                        <span>{{ getDisplayTime(transaction) }}</span>
+                                                        <span v-if="transaction.receiptSummary.accountId && accountsStore.allAccountsMap[transaction.receiptSummary.accountId]">· {{ accountsStore.allAccountsMap[transaction.receiptSummary.accountId]?.name }}</span>
+                                                    </template>
+                                                    <template v-else>
+                                                        <span>{{ getDisplayTime(transaction) }}</span>
+                                                        <span v-if="!isSameAsDefaultTimezoneOffsetMinutes(transaction)">{{ `(${getDisplayTimezone(transaction)})` }}</span>
+                                                        <span v-if="transaction.sourceAccount">· {{ transaction.sourceAccount.name }}</span>
+                                                        <f7-icon class="transaction-account-arrow icon-with-direction" f7="arrow_right" v-if="transaction.sourceAccount && transaction.type === TransactionType.Transfer && transaction.destinationAccount && transaction.sourceAccount.id !== transaction.destinationAccount.id"></f7-icon>
+                                                        <span v-if="transaction.sourceAccount && transaction.type === TransactionType.Transfer && transaction.destinationAccount && transaction.sourceAccount.id !== transaction.destinationAccount.id">{{ transaction.destinationAccount.name }}</span>
+                                                    </template>
+                                                </div>
                                             </div>
                                         </div>
                                         <div class="item-footer">
-                                            <div class="transaction-tags" v-if="showTagInTransactionListPage && transaction.tagIds && transaction.tagIds.length">
+                                            <div class="transaction-tags" v-if="!transaction.receiptSummary && showTagInTransactionListPage && transaction.tagIds && transaction.tagIds.length">
                                                 <f7-chip media-text-color="var(--f7-chip-text-color)" class="transaction-tag"
                                                          :text="allTransactionTags[tagId]?.name"
                                                          :key="tagId"
@@ -263,19 +285,12 @@
                                                     </template>
                                                 </f7-chip>
                                             </div>
-                                            <div class="transaction-footer">
-                                                <span>{{ getDisplayTime(transaction) }}</span>
-                                                <span v-if="!isSameAsDefaultTimezoneOffsetMinutes(transaction)">{{ `(${getDisplayTimezone(transaction)})` }}</span>
-                                                <span v-if="transaction.sourceAccount">·</span>
-                                                <span v-if="transaction.sourceAccount">{{ transaction.sourceAccount.name }}</span>
-                                                <f7-icon class="transaction-account-arrow icon-with-direction" f7="arrow_right" v-if="transaction.sourceAccount && transaction.type === TransactionType.Transfer && transaction.destinationAccount && transaction.sourceAccount.id !== transaction.destinationAccount.id"></f7-icon>
-                                                <span v-if="transaction.sourceAccount && transaction.type === TransactionType.Transfer && transaction.destinationAccount && transaction.sourceAccount.id !== transaction.destinationAccount.id">{{ transaction.destinationAccount.name }}</span>
-                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </template>
-                            <f7-swipeout-actions :left="textDirection === TextDirection.RTL"
+                            <f7-swipeout-actions v-if="!transaction.receiptSummary"
+                                                 :left="textDirection === TextDirection.RTL"
                                                  :right="textDirection === TextDirection.LTR">
                                 <f7-swipeout-button color="primary" close
                                                     :text="tt('Duplicate')"
@@ -595,6 +610,16 @@
                 <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
             </f7-actions-group>
         </f7-actions>
+
+        <f7-actions close-by-outside-click close-on-escape :opened="showAddActionSheet" @actions:closed="showAddActionSheet = false">
+            <f7-actions-group>
+                <f7-actions-button @click="add()">{{ tt('Add Transaction') }}</f7-actions-button>
+                <f7-actions-button @click="addReceipt()">{{ tt('Add Receipt') }}</f7-actions-button>
+            </f7-actions-group>
+            <f7-actions-group>
+                <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
+            </f7-actions-group>
+        </f7-actions>
     </f7-page>
 </template>
 
@@ -670,7 +695,9 @@ const {
     tt,
     getCurrentLanguageTextDirection,
     getCurrentNumeralSystemType,
-    getWeekdayShortName
+    getWeekdayShortName,
+    formatAmountToLocalizedNumeralsWithCurrency,
+    formatAmountToLocalizedNumerals
 } = useI18n();
 
 const { showAlert, showToast, routeBackOnError } = useI18nUIComponents();
@@ -742,6 +769,7 @@ const transactionYearMonthListHeights = ref<Record<TextualYearMonth, number>>({}
 const showSearchbar = ref<boolean>(false);
 const showCustomDateRangeSheet = ref<boolean>(false);
 const showCustomMonthSheet = ref<boolean>(false);
+const showAddActionSheet = ref<boolean>(false);
 const showDeleteActionSheet = ref<boolean>(false);
 
 const textDirection = computed<TextDirection>(() => getCurrentLanguageTextDirection());
@@ -793,6 +821,28 @@ const transactions = computed<TransactionMonthList[]>(() => {
     } else {
         return [];
     }
+});
+
+const displayTransactions = computed<TransactionMonthList[]>(() => {
+    return transactions.value.map(monthList => {
+        const seenReceiptIds = new Set<string>();
+        const items: Transaction[] = [];
+
+        for (const transaction of monthList.items) {
+            if (transaction.receiptId && transaction.receiptSummary) {
+                if (seenReceiptIds.has(transaction.receiptId)) {
+                    continue;
+                }
+                seenReceiptIds.add(transaction.receiptId);
+            }
+            items.push(transaction);
+        }
+
+        return {
+            ...monthList,
+            items
+        };
+    });
 });
 
 const noTransaction = computed<boolean>(() => {
@@ -904,6 +954,26 @@ function getTransactionDateStyle(transaction: Transaction, previousTransaction: 
     return {
         color: 'transparent'
     };
+}
+
+function getDisplayReceiptAmount(transaction: Transaction): string {
+    const summary = transaction.receiptSummary;
+    if (!summary) return '';
+
+    const amount = Math.abs(summary.totalAmount);
+    let currency: string | undefined;
+
+    if (summary.accountId) {
+        const account = accountsStore.allAccountsMap[summary.accountId];
+        if (account) {
+            currency = account.currency;
+        }
+    }
+
+    if (currency) {
+        return formatAmountToLocalizedNumeralsWithCurrency(amount, currency);
+    }
+    return formatAmountToLocalizedNumerals(amount);
 }
 
 function getCategoryListItemCheckedClass(category: TransactionCategory, queryCategoryIds: Record<string, boolean>): Record<string, boolean> {
@@ -1394,6 +1464,10 @@ function add(): void {
     props.f7router.navigate(`/transaction/add?${params.join('&')}`);
 }
 
+function addReceipt(): void {
+    props.f7router.navigate('/receipt/detail');
+}
+
 function duplicate(transaction: Transaction): void {
     props.f7router.navigate(`/transaction/add?id=${transaction.id}&type=${transaction.type}`);
 }
@@ -1518,7 +1592,37 @@ init();
 }
 
 .list.transaction-info-list li.transaction-info .actual-item-inner .item-after {
-    max-width: 100%;
+    max-width: 70%;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    flex-shrink: 0;
+}
+
+.list.transaction-info-list li.transaction-info .actual-item-inner .item-title-row {
+    align-items: flex-start;
+}
+
+.list.transaction-info-list li.transaction-info .transaction-title-with-sub {
+    display: flex;
+    flex-direction: column;
+}
+
+.list.transaction-info-list li.transaction-info .transaction-title-primary {
+    font-size: var(--f7-list-item-title-font-size);
+    font-weight: var(--f7-list-item-title-font-weight);
+    line-height: var(--f7-list-item-title-line-height);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.list.transaction-info-list li.transaction-info .transaction-title-secondary {
+    font-size: var(--f7-list-item-text-font-size);
+    font-weight: var(--f7-list-item-text-font-weight);
+    color: var(--f7-list-item-text-text-color);
+    line-height: var(--f7-list-item-text-line-height);
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .list.transaction-info-list li.transaction-info .transaction-date {
@@ -1590,14 +1694,25 @@ html[dir="rtl"] .list.transaction-info-list li.transaction-info .transaction-foo
     margin-inline-start: 4px;
 }
 
+.list.transaction-info-list li.transaction-info .transaction-after-footer {
+    font-size: var(--ebk-large-footer-font-size);
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+.list.transaction-info-list li.transaction-info .transaction-after-footer > span {
+    unicode-bidi: isolate;
+    margin-inline-end: 4px;
+}
+
+.list.transaction-info-list li.transaction-info .transaction-after-footer .transaction-account-arrow {
+    font-size: var(--ebk-transaction-account-arrow-font-size);
+}
+
 .list.transaction-info-list li.transaction-info .transaction-amount {
     color: var(--f7-list-item-after-text-color);
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.list.transaction-info-list li.transaction-info .transaction-info .item-after {
-    max-width: 70%;
 }
 
 .list.transaction-info-list li.transaction-info .transaction-category-name {

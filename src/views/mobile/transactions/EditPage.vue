@@ -60,12 +60,70 @@
                 v-if="pageTypeAndMode?.type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate"
             ></f7-list-input>
 
+            <f7-list-input
+                type="textarea"
+                class="transaction-edit-comment"
+                style="height: auto"
+                :class="{ 'readonly': mode === TransactionEditPageMode.View }"
+                :label="tt('Description')"
+                :placeholder="mode !== TransactionEditPageMode.View ? tt('Your transaction description (optional)') : ''"
+                v-textarea-auto-size
+                v-model:value="transaction.comment"
+            ></f7-list-input>
+
+            <f7-list-item
+                class="list-item-with-header-and-title"
+                link="#" no-chevron
+                :class="{ 'disabled': !allVisibleAccounts.length || (mode === TransactionEditPageMode.Edit && transaction.type === TransactionType.ModifyBalance), 'readonly': mode === TransactionEditPageMode.View }"
+                :header="tt(sourceAccountTitle)"
+                :title="sourceAccountName"
+                @click="showSourceAccountSheet = true"
+            >
+                <two-column-list-item-selection-sheet primary-key-field="id" primary-value-field="category"
+                                                      primary-title-field="name" primary-footer-field="displayBalance"
+                                                      primary-icon-field="icon" primary-icon-type="account"
+                                                      primary-sub-items-field="accounts"
+                                                      :primary-title-i18n="true"
+                                                      secondary-key-field="id" secondary-value-field="id"
+                                                      secondary-title-field="name" secondary-footer-field="displayBalance"
+                                                      secondary-icon-field="icon" secondary-icon-type="account" secondary-color-field="color"
+                                                      :enable-filter="true" :filter-placeholder="tt('Find account')" :filter-no-items-text="tt('No available account')"
+                                                      :items="allVisibleCategorizedAccounts"
+                                                      v-model:show="showSourceAccountSheet"
+                                                      v-model="transaction.sourceAccountId">
+                </two-column-list-item-selection-sheet>
+            </f7-list-item>
+
+            <f7-list-item
+                class="list-item-with-header-and-title"
+                link="#" no-chevron
+                :class="{ 'disabled': !allVisibleAccounts.length, 'readonly': mode === TransactionEditPageMode.View }"
+                :header="tt('Destination Account')"
+                :title="destinationAccountName"
+                v-if="transaction.type === TransactionType.Transfer"
+                @click="showDestinationAccountSheet = true"
+            >
+                <two-column-list-item-selection-sheet primary-key-field="id" primary-value-field="category"
+                                                      primary-title-field="name" primary-footer-field="displayBalance"
+                                                      primary-icon-field="icon" primary-icon-type="account"
+                                                      primary-sub-items-field="accounts"
+                                                      :primary-title-i18n="true"
+                                                      secondary-key-field="id" secondary-value-field="id"
+                                                      secondary-title-field="name" secondary-footer-field="displayBalance"
+                                                      secondary-icon-field="icon" secondary-icon-type="account" secondary-color-field="color"
+                                                      :enable-filter="true" :filter-placeholder="tt('Find account')" :filter-no-items-text="tt('No available account')"
+                                                      :items="allVisibleCategorizedAccounts"
+                                                      v-model:show="showDestinationAccountSheet"
+                                                      v-model="transaction.destinationAccountId">
+                </two-column-list-item-selection-sheet>
+            </f7-list-item>
+
             <f7-list-item
                 class="transaction-edit-amount"
                 link="#" no-chevron
                 :class="sourceAmountClass"
                 :header="sourceAmountTitle"
-                :title="getDisplayAmount(transaction.sourceAmount, transaction.hideAmount, sourceAccountCurrency)"
+                :title="getDisplayAmount(Math.abs(transaction.sourceAmount), transaction.hideAmount, sourceAccountCurrency)"
                 @click="showSourceAmountSheet = true"
             >
                 <number-pad-sheet :min-value="TRANSACTION_MIN_AMOUNT"
@@ -231,53 +289,6 @@
                                            v-model:show="showCategorySheet"
                                            v-model="transaction.transferCategoryId">
                 </tree-view-selection-sheet>
-            </f7-list-item>
-
-            <f7-list-item
-                class="list-item-with-header-and-title"
-                link="#" no-chevron
-                :class="{ 'disabled': !allVisibleAccounts.length || (mode === TransactionEditPageMode.Edit && transaction.type === TransactionType.ModifyBalance), 'readonly': mode === TransactionEditPageMode.View }"
-                :header="tt(sourceAccountTitle)"
-                :title="sourceAccountName"
-                @click="showSourceAccountSheet = true"
-            >
-                <two-column-list-item-selection-sheet primary-key-field="id" primary-value-field="category"
-                                                      primary-title-field="name" primary-footer-field="displayBalance"
-                                                      primary-icon-field="icon" primary-icon-type="account"
-                                                      primary-sub-items-field="accounts"
-                                                      :primary-title-i18n="true"
-                                                      secondary-key-field="id" secondary-value-field="id"
-                                                      secondary-title-field="name" secondary-footer-field="displayBalance"
-                                                      secondary-icon-field="icon" secondary-icon-type="account" secondary-color-field="color"
-                                                      :enable-filter="true" :filter-placeholder="tt('Find account')" :filter-no-items-text="tt('No available account')"
-                                                      :items="allVisibleCategorizedAccounts"
-                                                      v-model:show="showSourceAccountSheet"
-                                                      v-model="transaction.sourceAccountId">
-                </two-column-list-item-selection-sheet>
-            </f7-list-item>
-
-            <f7-list-item
-                class="list-item-with-header-and-title"
-                link="#" no-chevron
-                :class="{ 'disabled': !allVisibleAccounts.length, 'readonly': mode === TransactionEditPageMode.View }"
-                :header="tt('Destination Account')"
-                :title="destinationAccountName"
-                v-if="transaction.type === TransactionType.Transfer"
-                @click="showDestinationAccountSheet = true"
-            >
-                <two-column-list-item-selection-sheet primary-key-field="id" primary-value-field="category"
-                                                      primary-title-field="name" primary-footer-field="displayBalance"
-                                                      primary-icon-field="icon" primary-icon-type="account"
-                                                      primary-sub-items-field="accounts"
-                                                      :primary-title-i18n="true"
-                                                      secondary-key-field="id" secondary-value-field="id"
-                                                      secondary-title-field="name" secondary-footer-field="displayBalance"
-                                                      secondary-icon-field="icon" secondary-icon-type="account" secondary-color-field="color"
-                                                      :enable-filter="true" :filter-placeholder="tt('Find account')" :filter-no-items-text="tt('No available account')"
-                                                      :items="allVisibleCategorizedAccounts"
-                                                      v-model:show="showDestinationAccountSheet"
-                                                      v-model="transaction.destinationAccountId">
-                </two-column-list-item-selection-sheet>
             </f7-list-item>
 
             <f7-list-item
@@ -462,16 +473,6 @@
                 </template>
             </f7-list-item>
 
-            <f7-list-input
-                type="textarea"
-                class="transaction-edit-comment"
-                style="height: auto"
-                :class="{ 'readonly': mode === TransactionEditPageMode.View }"
-                :label="tt('Description')"
-                :placeholder="mode !== TransactionEditPageMode.View ? tt('Your transaction description (optional)') : ''"
-                v-textarea-auto-size
-                v-model:value="transaction.comment"
-            ></f7-list-input>
         </f7-list>
 
         <f7-actions close-by-outside-click close-on-escape :opened="showGeoLocationActionSheet" @actions:closed="showGeoLocationActionSheet = false">
@@ -992,7 +993,8 @@ function getQueryTransactionOptions(): SetTransactionOptions {
         amount: query['amount'] ? parseInt(query['amount']) : undefined,
         destinationAmount: query['destinationAmount'] ? parseInt(query['destinationAmount']) : undefined,
         tagIds: query['tagIds'],
-        comment: query['comment']
+        comment: query['comment'],
+        receiptId: query['receiptId']
     };
 }
 

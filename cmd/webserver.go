@@ -403,6 +403,15 @@ func startWebServer(c *core.CliContext) error {
 				apiV1Route.GET("/transactions/import/process.json", bindApi(api.Transactions.TransactionImportProcessHandler))
 			}
 
+			// Receipts
+			apiV1Route.GET("/receipts/list.json", bindApi(api.ReceiptsAPI.ReceiptListHandler))
+			apiV1Route.GET("/receipts/get.json", bindApi(api.ReceiptsAPI.ReceiptGetHandler))
+			apiV1Route.POST("/receipts/add.json", bindApi(api.ReceiptsAPI.ReceiptCreateHandler))
+			apiV1Route.POST("/receipts/modify.json", bindApi(api.ReceiptsAPI.ReceiptModifyHandler))
+			apiV1Route.POST("/receipts/delete.json", bindApi(api.ReceiptsAPI.ReceiptDeleteHandler))
+			apiV1Route.POST("/receipts/add_transactions.json", bindApi(api.ReceiptsAPI.ReceiptAddTransactionsHandler))
+			apiV1Route.POST("/receipts/remove_transaction.json", bindApi(api.ReceiptsAPI.ReceiptRemoveTransactionHandler))
+
 			// Transaction Pictures
 			if config.EnableTransactionPictures {
 				apiV1Route.POST("/transaction/pictures/upload.json", bindApi(api.TransactionPictures.TransactionPictureUploadHandler))

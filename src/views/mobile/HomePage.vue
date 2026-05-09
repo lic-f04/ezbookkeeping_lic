@@ -173,7 +173,7 @@
                 <span class="tabbar-label">{{ tt('Accounts') }}</span>
             </f7-link>
             <f7-link id="homepage-add-button" class="link dragenabled"
-                     href="/transaction/add" @taphold="openTransactionTemplatePopover">
+                     @click="showAddActionSheet = true" @taphold="openTransactionTemplatePopover">
                 <f7-icon f7="plus_square" class="ebk-tarbar-big-icon"></f7-icon>
             </f7-link>
             <f7-link class="link" href="/statistic/transaction">
@@ -209,6 +209,16 @@
         <a-i-image-recognition-sheet ref="aiImageRecognitionSheet"
                                      v-model:show="showAIReceiptImageRecognitionSheet"
                                      @recognition:change="onReceiptRecognitionChanged"/>
+
+        <f7-actions close-by-outside-click close-on-escape :opened="showAddActionSheet" @actions:closed="showAddActionSheet = false">
+            <f7-actions-group>
+                <f7-actions-button @click="addTransaction">{{ tt('Add Transaction') }}</f7-actions-button>
+                <f7-actions-button @click="addReceipt">{{ tt('Add Receipt') }}</f7-actions-button>
+            </f7-actions-group>
+            <f7-actions-group>
+                <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
+            </f7-actions-group>
+        </f7-actions>
     </f7-page>
 </template>
 
@@ -263,6 +273,7 @@ const aiImageRecognitionSheet = useTemplateRef<AIImageRecognitionSheetType>('aiI
 const loading = ref<boolean>(true);
 const showTransactionTemplatePopover = ref<boolean>(false);
 const showAIReceiptImageRecognitionSheet = ref<boolean>(false);
+const showAddActionSheet = ref<boolean>(false);
 
 const allTransactionTemplates = computed<TransactionTemplate[]>(() => {
     const allTemplates = transactionTemplatesStore.allVisibleTemplates;
@@ -273,6 +284,14 @@ function openTransactionTemplatePopover(): void {
     if (isTransactionFromAIImageRecognitionEnabled() || (allTransactionTemplates.value && allTransactionTemplates.value.length)) {
         showTransactionTemplatePopover.value = true;
     }
+}
+
+function addTransaction(): void {
+    props.f7router.navigate('/transaction/add');
+}
+
+function addReceipt(): void {
+    props.f7router.navigate('/receipt/detail');
 }
 
 function init(): void {

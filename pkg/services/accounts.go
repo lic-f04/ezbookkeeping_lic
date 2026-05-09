@@ -929,9 +929,7 @@ func (s *AccountService) GetAccountOrSubAccountIds(c core.Context, accountIds st
 				accountIdsMap[subAccount.ParentAccountId] = 1
 			}
 
-			if _, exists := accountIdsMap[subAccount.AccountId]; exists {
-				delete(accountIdsMap, subAccount.AccountId)
-			}
+			delete(accountIdsMap, subAccount.AccountId)
 
 			allAccountIds = append(allAccountIds, subAccount.AccountId)
 		}
@@ -956,9 +954,10 @@ func (s *AccountService) GetAccountOrSubAccountIdsByAccountName(accounts []*mode
 		account := accounts[i]
 
 		if account.Name == accountName {
-			if account.Type == models.ACCOUNT_TYPE_SINGLE_ACCOUNT {
+			switch account.Type {
+			case models.ACCOUNT_TYPE_SINGLE_ACCOUNT:
 				accountIds = append(accountIds, account.AccountId)
-			} else if account.Type == models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS {
+			case models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS:
 				parentAccountIds = append(parentAccountIds, account.AccountId)
 			}
 		} else if account.ParentAccountId > 0 {

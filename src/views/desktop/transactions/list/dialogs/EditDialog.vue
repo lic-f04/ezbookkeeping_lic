@@ -53,15 +53,15 @@
 
       <v-card-text class="d-flex flex-column flex-md-row flex-grow-1 overflow-y-auto">
         <div class="mb-4">
-          <v-tabs class="v-tabs-pill" direction="vertical" :class="{ 'readonly': type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add }"
-            :disabled="loading || submitting" v-model="transaction.type">
-            <v-tab :value="TransactionType.Expense" :disabled="type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add && transaction.type !== TransactionType.Expense" v-if="transaction.type !== TransactionType.ModifyBalance">
+          <v-tabs class="v-tabs-pill" direction="vertical"
+            :disabled="loading || submitting || mode === TransactionEditPageMode.View" v-model="transaction.type">
+            <v-tab :value="TransactionType.Expense" v-if="transaction.type !== TransactionType.ModifyBalance">
               <span>{{ tt('Expense') }}</span>
             </v-tab>
-            <v-tab :value="TransactionType.Income" :disabled="type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add && transaction.type !== TransactionType.Income" v-if="transaction.type !== TransactionType.ModifyBalance">
+            <v-tab :value="TransactionType.Income" v-if="transaction.type !== TransactionType.ModifyBalance">
               <span>{{ tt('Income') }}</span>
             </v-tab>
-            <v-tab :value="TransactionType.Transfer" :disabled="type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add && transaction.type !== TransactionType.Transfer" v-if="transaction.type !== TransactionType.ModifyBalance">
+            <v-tab :value="TransactionType.Transfer" v-if="transaction.type !== TransactionType.ModifyBalance">
               <span>{{ tt('Transfer') }}</span>
             </v-tab>
             <v-tab :value="TransactionType.ModifyBalance" v-if="type === TransactionEditPageType.Transaction && transaction.type === TransactionType.ModifyBalance">
@@ -87,6 +87,19 @@
           <v-window-item value="basicInfo">
             <v-form class="mt-2">
               <v-row>
+                <v-col cols="12" md="12">
+                  <v-textarea
+                    type="text"
+                    persistent-placeholder
+                    rows="3"
+                    :readonly="mode === TransactionEditPageMode.View"
+                    :disabled="loading || submitting"
+                    :label="tt('Description')"
+                    :placeholder="tt('Your transaction description (optional)')"
+                    v-model="transaction.comment"
+                  />
+                </v-col>
+
                 <v-col cols="12" v-if="type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate">
                   <v-text-field
                     type="text"
@@ -385,19 +398,6 @@
                     :allow-add-new-tag="true"
                     v-model="transaction.tagIds"
                     @tag:saving="onSavingTag"
-                  />
-                </v-col>
-
-                <v-col cols="12" md="12">
-                  <v-textarea
-                    type="text"
-                    persistent-placeholder
-                    rows="3"
-                    :readonly="mode === TransactionEditPageMode.View"
-                    :disabled="loading || submitting"
-                    :label="tt('Description')"
-                    :placeholder="tt('Your transaction description (optional)')"
-                    v-model="transaction.comment"
                   />
                 </v-col>
               </v-row>
@@ -906,6 +906,17 @@ function save(afterAction: AfterSaveAction): void {
   }
 
   if (props.type === TransactionEditPageType.Transaction && (mode.value === TransactionEditPageMode.Add || mode.value === TransactionEditPageMode.Edit)) {
+    if (transaction.value.type === TransactionType.Expense) {
+      transaction.value.incomeCategoryId = '';
+      transaction.value.transferCategoryId = '';
+    } else if (transaction.value.type === TransactionType.Income) {
+      transaction.value.expenseCategoryId = '';
+      transaction.value.transferCategoryId = '';
+    } else if (transaction.value.type === TransactionType.Transfer) {
+      transaction.value.expenseCategoryId = '';
+      transaction.value.incomeCategoryId = '';
+    }
+
     const doSubmit = function () {
       submitting.value = true;
       transactionsStore.saveTransaction({
@@ -1233,6 +1244,32 @@ watch(activeTab, (newValue) => {
     nextTick(() => {
       map.value?.initMapView();
     });
+  }
+});
+
+const previousType = ref<number | null>(null);
+
+watch(() => transaction.value.type, (newType, oldType) => {
+  if (mode.value !== TransactionEditPageMode.Edit || oldType === undefined) {
+    previousType.value = oldType ?? null;
+    return;
+  }
+
+  transaction.value.expenseCategoryId = '';
+  transaction.value.incomeCategoryId = '';
+  transaction.value.transferCategoryId = '';
+
+  if (oldType === TransactionType.Transfer && newType !== TransactionType.Transfer) {
+    transaction.value.destinationAccountId = '';
+    transaction.value.destinationAmount = 0;
+  }
+
+  if (newType === TransactionType.Expense && transaction.value.sourceAmount > 0) {
+    transaction.value.sourceAmount = -transaction.value.sourceAmount;
+  } else if (newType === TransactionType.Income && transaction.value.sourceAmount < 0) {
+    transaction.value.sourceAmount = Math.abs(transaction.value.sourceAmount);
+  } else if (newType === TransactionType.Transfer) {
+    transaction.value.sourceAmount = Math.abs(transaction.value.sourceAmount);
   }
 });
 

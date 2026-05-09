@@ -11,6 +11,8 @@ import TransactionListPage from '@/views/mobile/transactions/ListPage.vue';
 import TransactionEditPage from '@/views/mobile/transactions/EditPage.vue';
 import TransactionAmountFilterPage from '@/views/mobile/transactions/AmountFilterPage.vue';
 
+import ReceiptPage from '@/views/mobile/receipts/ReceiptPage.vue';
+
 import AccountListPage from '@/views/mobile/accounts/ListPage.vue';
 import AccountEditPage from '@/views/mobile/accounts/EditPage.vue';
 import AccountReconciliationStatementPage from '@/views/mobile/accounts/ReconciliationStatementPage.vue';
@@ -179,6 +181,11 @@ const routes: Router.RouteParameters[] = [
     {
         path: '/transaction/detail',
         async: asyncResolve(TransactionEditPage),
+        beforeEnter: [checkLogin]
+    },
+    {
+        path: '/receipt/detail',
+        async: asyncResolve(ReceiptPage),
         beforeEnter: [checkLogin]
     },
     {

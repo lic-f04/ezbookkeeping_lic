@@ -171,6 +171,13 @@ import type {
 import type {
     RecognizedReceiptImageResponse
 } from '@/models/large_language_model.ts';
+import type {
+    ReceiptCreateRequest,
+    ReceiptModifyRequest,
+    ReceiptInfoResponse,
+    ReceiptAddTransactionsRequest,
+    ReceiptRemoveTransactionRequest
+} from '@/models/receipt.ts';
 
 import {
     getCurrentToken,
@@ -803,6 +810,27 @@ export default {
             timeout: DEFAULT_LLM_API_TIMEOUT,
             cancelableUuid: cancelableUuid
         } as ApiRequestConfig);
+    },
+    getAllReceipts: (): ApiResponsePromise<ReceiptInfoResponse[]> => {
+        return axios.get<ApiResponse<ReceiptInfoResponse[]>>('v1/receipts/list.json');
+    },
+    getReceipt: ({ id }: { id: string }): ApiResponsePromise<ReceiptInfoResponse> => {
+        return axios.get<ApiResponse<ReceiptInfoResponse>>('v1/receipts/get.json?id=' + id);
+    },
+    addReceipt: (req: ReceiptCreateRequest): ApiResponsePromise<ReceiptInfoResponse> => {
+        return axios.post<ApiResponse<ReceiptInfoResponse>>('v1/receipts/add.json', req);
+    },
+    modifyReceipt: (req: ReceiptModifyRequest): ApiResponsePromise<ReceiptInfoResponse> => {
+        return axios.post<ApiResponse<ReceiptInfoResponse>>('v1/receipts/modify.json', req);
+    },
+    deleteReceipt: (req: { id: string }): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/receipts/delete.json', req);
+    },
+    addTransactionsToReceipt: (req: ReceiptAddTransactionsRequest): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/receipts/add_transactions.json', req);
+    },
+    removeTransactionFromReceipt: (req: ReceiptRemoveTransactionRequest): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/receipts/remove_transaction.json', req);
     },
     getLatestExchangeRates: (param: { ignoreError?: boolean }): ApiResponsePromise<LatestExchangeRateResponse> => {
         return axios.get<ApiResponse<LatestExchangeRateResponse>>('v1/exchange_rates/latest.json', {

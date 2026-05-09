@@ -36,6 +36,7 @@ type TransactionsApi struct {
 	transactionPictures   *services.TransactionPictureService
 	accounts              *services.AccountService
 	users                 *services.UserService
+	receipts              *services.ReceiptService
 }
 
 // Initialize a transaction api singleton instance
@@ -56,6 +57,7 @@ var (
 		transactionPictures:   services.TransactionPictures,
 		accounts:              services.Accounts,
 		users:                 services.Users,
+		receipts:              services.Receipts,
 	}
 )
 
@@ -207,6 +209,12 @@ func (a *TransactionsApi) TransactionListHandler(c *core.WebContext) (any, *errs
 		return nil, errs.Or(err, errs.ErrOperationFailed)
 	}
 
+	err = a.populateTransactionReceiptSummaries(c, uid, transactionResult)
+
+	if err != nil {
+		log.Warnf(c, "[transactions.TransactionListHandler] failed to populate receipt summaries, because %s", err.Error())
+	}
+
 	transactionResps := &models.TransactionInfoPageWrapperResponse{
 		Items: transactionResult,
 	}
@@ -296,6 +304,12 @@ func (a *TransactionsApi) TransactionMonthListHandler(c *core.WebContext) (any, 
 	if err != nil {
 		log.Errorf(c, "[transactions.TransactionMonthListHandler] failed to assemble transaction result for user \"uid:%d\", because %s", uid, err.Error())
 		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	err = a.populateTransactionReceiptSummaries(c, uid, transactionResult)
+
+	if err != nil {
+		log.Warnf(c, "[transactions.TransactionMonthListHandler] failed to populate receipt summaries, because %s", err.Error())
 	}
 
 	transactionResps := &models.TransactionInfoPageWrapperResponse2{
@@ -401,6 +415,12 @@ func (a *TransactionsApi) TransactionListAllHandler(c *core.WebContext) (any, *e
 	if err != nil {
 		log.Errorf(c, "[transactions.TransactionListAllHandler] failed to assemble transaction result for user \"uid:%d\", because %s", uid, err.Error())
 		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	err = a.populateTransactionReceiptSummaries(c, uid, transactionResult)
+
+	if err != nil {
+		log.Warnf(c, "[transactions.TransactionListAllHandler] failed to populate receipt summaries, because %s", err.Error())
 	}
 
 	return transactionResult, nil
@@ -1131,6 +1151,14 @@ func (a *TransactionsApi) TransactionCreateHandler(c *core.WebContext) (any, *er
 
 	log.Infof(c, "[transactions.TransactionCreateHandler] user \"uid:%d\" has created a new transaction \"id:%d\" successfully", uid, transaction.TransactionId)
 
+	if transaction.ReceiptId > 0 {
+		err = a.receipts.RecalculateReceiptTotalById(c, uid, transaction.ReceiptId)
+
+		if err != nil {
+			log.Errorf(c, "[transactions.TransactionCreateHandler] failed to recalculate receipt total for receipt \"id:%d\", because %s", transaction.ReceiptId, err.Error())
+		}
+	}
+
 	a.SetSubmissionRemarkIfEnable(duplicatechecker.DUPLICATE_CHECKER_TYPE_NEW_TRANSACTION, uid, transactionCreateReq.ClientSessionId, utils.Int64ToString(transaction.TransactionId))
 	transactionResp := transaction.ToTransactionInfoResponse(tagIds, transactionEditable)
 	transactionResp.Pictures = a.GetTransactionPictureInfoResponseList(pictureInfos)
@@ -1218,7 +1246,7 @@ func (a *TransactionsApi) TransactionModifyHandler(c *core.WebContext) (any, *er
 	transactionTagIds := allTransactionTagIds[transaction.TransactionId]
 
 	if transactionTagIds == nil {
-		transactionTagIds = make([]int64, 0, 0)
+		transactionTagIds = make([]int64, 0)
 	}
 
 	transactionPictureInfos, err := a.transactionPictures.GetPictureInfosByTransactionId(c, uid, transaction.TransactionId)
@@ -1244,7 +1272,19 @@ func (a *TransactionsApi) TransactionModifyHandler(c *core.WebContext) (any, *er
 		Comment:           transactionModifyReq.Comment,
 	}
 
-	if transaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT {
+	if transactionModifyReq.Type > 0 {
+		newTransactionDbType, err := transactionModifyReq.Type.ToTransactionDbType()
+
+		if err != nil {
+			return nil, errs.Or(err, errs.ErrTransactionTypeInvalid)
+		}
+
+		newTransaction.Type = newTransactionDbType
+	} else {
+		newTransaction.Type = transaction.Type
+	}
+
+	if newTransaction.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT {
 		newTransaction.RelatedAccountId = transactionModifyReq.DestinationAccountId
 		newTransaction.RelatedAccountAmount = transactionModifyReq.DestinationAmount
 	}
@@ -1254,7 +1294,8 @@ func (a *TransactionsApi) TransactionModifyHandler(c *core.WebContext) (any, *er
 		newTransaction.GeoLatitude = transactionModifyReq.GeoLocation.Latitude
 	}
 
-	if newTransaction.CategoryId == transaction.CategoryId &&
+	if newTransaction.Type == transaction.Type &&
+		newTransaction.CategoryId == transaction.CategoryId &&
 		utils.GetUnixTimeFromTransactionTime(newTransaction.TransactionTime) == utils.GetUnixTimeFromTransactionTime(transaction.TransactionTime) &&
 		newTransaction.TimezoneUtcOffset == transaction.TimezoneUtcOffset &&
 		newTransaction.AccountId == transaction.AccountId &&
@@ -1334,6 +1375,14 @@ func (a *TransactionsApi) TransactionModifyHandler(c *core.WebContext) (any, *er
 	}
 
 	log.Infof(c, "[transactions.TransactionModifyHandler] user \"uid:%d\" has updated transaction \"id:%d\" successfully", uid, transactionModifyReq.Id)
+
+	if transaction.ReceiptId > 0 {
+		err = a.receipts.RecalculateReceiptTotalById(c, uid, transaction.ReceiptId)
+
+		if err != nil {
+			log.Errorf(c, "[transactions.TransactionModifyHandler] failed to recalculate receipt total for receipt \"id:%d\", because %s", transaction.ReceiptId, err.Error())
+		}
+	}
 
 	newTransaction.Type = transaction.Type
 	newTransactionResp := newTransaction.ToTransactionInfoResponse(tagIds, transactionEditable)
@@ -1453,6 +1502,15 @@ func (a *TransactionsApi) TransactionDeleteHandler(c *core.WebContext) (any, *er
 	}
 
 	log.Infof(c, "[transactions.TransactionDeleteHandler] user \"uid:%d\" has deleted transaction \"id:%d\"", uid, transactionDeleteReq.Id)
+
+	if transaction.ReceiptId > 0 {
+		err = a.receipts.RecalculateReceiptTotalById(c, uid, transaction.ReceiptId)
+
+		if err != nil {
+			log.Errorf(c, "[transactions.TransactionDeleteHandler] failed to recalculate receipt total for receipt \"id:%d\", because %s", transaction.ReceiptId, err.Error())
+		}
+	}
+
 	return true, nil
 }
 
@@ -1789,14 +1847,15 @@ func (a *TransactionsApi) TransactionImportHandler(c *core.WebContext) (any, *er
 			items := strings.Split(remark, ":")
 
 			if len(items) >= 2 {
-				if items[0] == "finished" {
+				switch items[0] {
+				case "finished":
 					log.Infof(c, "[transactions.TransactionImportHandler] another \"%s\" transactions has been imported for user \"uid:%d\"", items[1], uid)
 					count, err := utils.StringToInt(items[1])
 
 					if err == nil {
 						return count, nil
 					}
-				} else if items[0] == "processing" {
+				case "processing":
 					return nil, errs.ErrRepeatedRequest
 				}
 			} else {
@@ -2116,7 +2175,44 @@ func (a *TransactionsApi) getTransactionEssentialDataByTransactionIds(c *core.We
 	return accountMap, categoryMap, tagMap, allTransactionTagIds, pictureInfoMap, nil
 }
 
-func (a *TransactionsApi) getTransactionResponseListResult(c *core.WebContext, user *models.User, transactions []*models.Transaction, allAccounts map[int64]*models.Account, categoryMap map[int64]*models.TransactionCategory, tagMap map[int64]*models.TransactionTag, allTransactionTagIds map[int64][]int64, pictureInfoMap map[int64][]*models.TransactionPictureInfo, clientTimezone *time.Location, withPictures bool, trimAccount bool, trimCategory bool, trimTag bool) (models.TransactionInfoResponseSlice, error) {
+// populateTransactionReceiptSummaries populates receipt summary data on transaction response items
+func (a *TransactionsApi) populateTransactionReceiptSummaries(c core.Context, uid int64, result models.TransactionInfoResponseSlice) error {
+	receiptIdSet := make(map[int64]bool)
+
+	for i := 0; i < len(result); i++ {
+		if result[i].ReceiptId > 0 {
+			receiptIdSet[result[i].ReceiptId] = true
+		}
+	}
+
+	if len(receiptIdSet) < 1 {
+		return nil
+	}
+
+	receiptIds := make([]int64, 0, len(receiptIdSet))
+
+	for receiptId := range receiptIdSet {
+		receiptIds = append(receiptIds, receiptId)
+	}
+
+	receiptMap, err := services.Receipts.GetReceiptMapByReceiptIds(c, uid, receiptIds)
+
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < len(result); i++ {
+		if result[i].ReceiptId > 0 {
+			if receipt, exists := receiptMap[result[i].ReceiptId]; exists {
+				result[i].ReceiptSummary = receipt.ToReceiptSummaryResponse()
+			}
+		}
+	}
+
+	return nil
+}
+
+func (a *TransactionsApi) getTransactionResponseListResult(_ *core.WebContext, user *models.User, transactions []*models.Transaction, allAccounts map[int64]*models.Account, categoryMap map[int64]*models.TransactionCategory, tagMap map[int64]*models.TransactionTag, allTransactionTagIds map[int64][]int64, pictureInfoMap map[int64][]*models.TransactionPictureInfo, clientTimezone *time.Location, withPictures bool, trimAccount bool, trimCategory bool, trimTag bool) (models.TransactionInfoResponseSlice, error) {
 	result := make(models.TransactionInfoResponseSlice, len(transactions))
 
 	for i := 0; i < len(transactions); i++ {
@@ -2167,13 +2263,14 @@ func (a *TransactionsApi) getTransactionResponseListResult(c *core.WebContext, u
 func (a *TransactionsApi) createNewTransactionModel(uid int64, transactionCreateReq *models.TransactionCreateRequest, clientIp string) *models.Transaction {
 	var transactionDbType models.TransactionDbType
 
-	if transactionCreateReq.Type == models.TRANSACTION_TYPE_MODIFY_BALANCE {
+	switch transactionCreateReq.Type {
+	case models.TRANSACTION_TYPE_MODIFY_BALANCE:
 		transactionDbType = models.TRANSACTION_DB_TYPE_MODIFY_BALANCE
-	} else if transactionCreateReq.Type == models.TRANSACTION_TYPE_EXPENSE {
+	case models.TRANSACTION_TYPE_EXPENSE:
 		transactionDbType = models.TRANSACTION_DB_TYPE_EXPENSE
-	} else if transactionCreateReq.Type == models.TRANSACTION_TYPE_INCOME {
+	case models.TRANSACTION_TYPE_INCOME:
 		transactionDbType = models.TRANSACTION_DB_TYPE_INCOME
-	} else if transactionCreateReq.Type == models.TRANSACTION_TYPE_TRANSFER {
+	case models.TRANSACTION_TYPE_TRANSFER:
 		transactionDbType = models.TRANSACTION_DB_TYPE_TRANSFER_OUT
 	}
 
@@ -2200,6 +2297,10 @@ func (a *TransactionsApi) createNewTransactionModel(uid int64, transactionCreate
 	if transactionCreateReq.GeoLocation != nil {
 		transaction.GeoLongitude = transactionCreateReq.GeoLocation.Longitude
 		transaction.GeoLatitude = transactionCreateReq.GeoLocation.Latitude
+	}
+
+	if transactionCreateReq.ReceiptId > 0 {
+		transaction.ReceiptId = transactionCreateReq.ReceiptId
 	}
 
 	return transaction

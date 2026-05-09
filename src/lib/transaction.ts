@@ -32,6 +32,7 @@ export interface SetTransactionOptions {
     unitPrice?: number;          // Lic
     tagIds?: string;
     comment?: string;
+    receiptId?: string;
 }
 
 export function setTransactionModelByTransaction(transaction: Transaction, transaction2: Transaction | null | undefined, allCategories: Record<number, TransactionCategory[]>, allCategoriesMap: Record<string, TransactionCategory>, allVisibleAccounts: Account[], allAccountsMap: Record<string, Account>, allTagsMap: Record<string, TransactionTag>, defaultAccountId: string, options: SetTransactionOptions, setContextData: boolean): void {
@@ -168,6 +169,10 @@ export function setTransactionModelByTransaction(transaction: Transaction, trans
         transaction.comment = options.comment;
     }
 
+    if (options.receiptId) {
+        transaction.receiptId = options.receiptId;
+    }
+
     if (transaction2) {
         if (setContextData) {
             transaction.id = transaction2.id;
@@ -214,6 +219,8 @@ export function setTransactionModelByTransaction(transaction: Transaction, trans
         transaction.setPictures(TransactionPicture.ofMulti(transaction2.pictures || []));
 
         transaction.comment = transaction2.comment;
+
+        transaction.receiptId = transaction2.receiptId;
 
         if (setContextData) {
             transaction.setGeoLocation(transaction2.geoLocation);

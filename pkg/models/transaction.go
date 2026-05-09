@@ -141,6 +141,7 @@ type Transaction struct {
 	GeoLatitude          float64           `xorm:"INDEX(IDX_transaction_uid_deleted_time_longitude_latitude)"`
 	CreatedIp            string            `xorm:"VARCHAR(39)"`
 	ScheduledCreated     bool
+	ReceiptId            int64  `xorm:"INDEX NOT NULL DEFAULT 0"`
 	CreatedUnixTime      int64
 	UpdatedUnixTime      int64
 	DeletedUnixTime      int64
@@ -176,12 +177,14 @@ type TransactionCreateRequest struct {
 	PictureIds           []string                       `json:"pictureIds"`
 	Comment              string                         `json:"comment" binding:"max=255"`
 	GeoLocation          *TransactionGeoLocationRequest `json:"geoLocation" binding:"omitempty"`
+	ReceiptId            int64                          `json:"receiptId,string,omitempty"`
 	ClientSessionId      string                         `json:"clientSessionId"`
 }
 
 // TransactionModifyRequest represents all parameters of transaction modification request
 type TransactionModifyRequest struct {
 	Id                   int64                          `json:"id,string" binding:"required,min=1"`
+	Type                 TransactionType                `json:"type,omitempty"`
 	CategoryId           int64                          `json:"categoryId,string"`
 	Time                 int64                          `json:"time" binding:"required,min=1"`
 	UtcOffset            int16                          `json:"utcOffset" binding:"min=-720,max=840"`
@@ -378,6 +381,8 @@ type TransactionInfoResponse struct {
 	Comment              string                                   `json:"comment"`
 	GeoLocation          *TransactionGeoLocationResponse          `json:"geoLocation,omitempty"`
 	Editable             bool                                     `json:"editable"`
+	ReceiptId            int64                                    `json:"receiptId,string,omitempty"`
+	ReceiptSummary       *ReceiptSummaryResponse                  `json:"receiptSummary,omitempty"`
 }
 
 // TransactionCountResponse represents transaction count response
@@ -590,6 +595,7 @@ func (t *Transaction) ToTransactionInfoResponse(tagIds []int64, editable bool) *
 		Comment:              t.Comment,
 		GeoLocation:          geoLocation,
 		Editable:             editable,
+		ReceiptId:            t.ReceiptId,
 	}
 }
 
