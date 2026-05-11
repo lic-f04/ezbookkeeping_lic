@@ -12,22 +12,12 @@
                             ]" v-model="activeCategoryType" @update:model-value="switchAllPrimaryCategories" />
                         </div>
                         <v-divider />
-                        <v-tabs show-arrows class="my-4" direction="vertical"
-                                :disabled="loading" v-model="primaryCategoryId">
-                            <v-tab class="tab-text-truncate" value="0" @click="switchAllPrimaryCategories">
-                                <span class="text-truncate">{{ tt('Primary Categories') }}</span>
-                            </v-tab>
-                            <template :key="category.id" v-for="category in primaryCategories">
-                                <v-tab class="tab-text-truncate" :value="category.id" v-if="!category.hidden"
-                                       @click="switchPrimaryCategory(category)">
-                                    <span class="text-truncate">{{ category.name }}</span>
-                                </v-tab>
-                            </template>
-                            <template v-if="loading && (!primaryCategories || primaryCategories.length < 1)">
-                                <v-skeleton-loader class="skeleton-no-margin mx-5 mt-4 mb-3" type="text"
-                                                   :key="itemIdx" :loading="true" v-for="itemIdx in [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 ]"></v-skeleton-loader>
-                            </template>
-                        </v-tabs>
+                        <div class="mx-4 my-2" v-if="primaryCategoryId !== '0'">
+                            <v-btn variant="text" size="small" class="pa-0" @click="navigateBack">
+                                <v-icon :icon="mdiArrowLeft" size="18" class="me-1" />
+                                <span class="text-truncate">{{ tt('Back') }}</span>
+                            </v-btn>
+                        </div>
                     </v-navigation-drawer>
                     <v-main>
                         <v-window class="d-flex flex-grow-1 disable-tab-transition w-100-window-container" v-model="activeTab">
@@ -39,7 +29,7 @@
                                                    :ripple="false" :icon="true" @click="showNav = !showNav">
                                                 <v-icon :icon="mdiMenu" size="24" />
                                             </v-btn>
-                                            <span>{{ tt('Transaction Categories') }}</span>
+                                            <span>{{ currentCategoryTitle }}</span>
                                             <v-btn class="ms-3" color="default" variant="outlined"
                                                    :disabled="loading || updating" @click="add">{{ tt('Add') }}</v-btn>
                                             <v-btn class="ms-3" color="primary" variant="tonal"
@@ -224,7 +214,8 @@ import {
     mdiEyeOutline,
     mdiDeleteOutline,
     mdiDrag,
-    mdiDotsVertical
+    mdiDotsVertical,
+    mdiArrowLeft
 } from '@mdi/js';
 
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
@@ -300,7 +291,7 @@ function isCategorySupportSwitch(category: TransactionCategory): boolean {
         return false;
     }
 
-    return !category.parentId || category.parentId === '' || category.parentId === '0';
+    return !!(category.subCategories && category.subCategories.length > 0);
 }
 
 function switchAllPrimaryCategories(): void {
@@ -313,12 +304,33 @@ function switchPrimaryCategory(category: TransactionCategory): void {
         return;
     }
 
-    if (!category.parentId || category.parentId === '' || category.parentId === '0') {
+    if (category.subCategories && category.subCategories.length > 0) {
         primaryCategoryId.value = category.id;
     }
 
     updateCardMinHeight();
 }
+
+function navigateBack(): void {
+    const current = transactionCategoriesStore.allTransactionCategoriesMap[primaryCategoryId.value];
+    if (current && current.parentId && current.parentId !== '0') {
+        primaryCategoryId.value = current.parentId;
+    } else {
+        primaryCategoryId.value = '0';
+    }
+    updateCardMinHeight();
+}
+
+const currentCategoryTitle = computed<string>(() => {
+    if (!primaryCategoryId.value || primaryCategoryId.value === '0') {
+        return tt('Transaction Categories');
+    }
+    const cat = transactionCategoriesStore.allTransactionCategoriesMap[primaryCategoryId.value];
+    if (cat) {
+        return cat.name + ' - ' + tt('Transaction Categories');
+    }
+    return tt('Transaction Categories');
+});
 
 function reload(force: boolean): void {
     loading.value = true;

@@ -158,13 +158,14 @@ func (a *LargeLanguageModelsApi) RecognizeReceiptImageHandler(c *core.WebContext
 			continue
 		}
 
-		if category.Type == models.CATEGORY_TYPE_INCOME {
+		switch category.Type {
+		case models.CATEGORY_TYPE_INCOME:
 			incomeCategoryMap[category.Name] = category
 			incomeCategoryNames = append(incomeCategoryNames, category.Name)
-		} else if category.Type == models.CATEGORY_TYPE_EXPENSE {
+		case models.CATEGORY_TYPE_EXPENSE:
 			expenseCategoryMap[category.Name] = category
 			expenseCategoryNames = append(expenseCategoryNames, category.Name)
-		} else if category.Type == models.CATEGORY_TYPE_TRANSFER {
+		case models.CATEGORY_TYPE_TRANSFER:
 			transferCategoryMap[category.Name] = category
 			transferCategoryNames = append(transferCategoryNames, category.Name)
 		}
@@ -241,7 +242,7 @@ func (a *LargeLanguageModelsApi) RecognizeReceiptImageHandler(c *core.WebContext
 	return a.parseRecognizedReceiptImageResponse(c, uid, clientTimezone, result, accountMap, expenseCategoryMap, incomeCategoryMap, transferCategoryMap, tagMap)
 }
 
-func (a *LargeLanguageModelsApi) parseRecognizedReceiptImageResponse(c *core.WebContext, uid int64, clientTimezone *time.Location, recognizedResult *models.RecognizedReceiptImageResult, accountMap map[string]*models.Account, expenseCategoryMap map[string]*models.TransactionCategory, incomeCategoryMap map[string]*models.TransactionCategory, transferCategoryMap map[string]*models.TransactionCategory, tagMap map[string]*models.TransactionTag) (*models.RecognizedReceiptImageResponse, *errs.Error) {
+func (a *LargeLanguageModelsApi) parseRecognizedReceiptImageResponse(c *core.WebContext, _ int64, clientTimezone *time.Location, recognizedResult *models.RecognizedReceiptImageResult, accountMap map[string]*models.Account, expenseCategoryMap map[string]*models.TransactionCategory, incomeCategoryMap map[string]*models.TransactionCategory, transferCategoryMap map[string]*models.TransactionCategory, tagMap map[string]*models.TransactionTag) (*models.RecognizedReceiptImageResponse, *errs.Error) {
 	recognizedReceiptImageResponse := &models.RecognizedReceiptImageResponse{
 		Type: models.TRANSACTION_TYPE_EXPENSE,
 	}

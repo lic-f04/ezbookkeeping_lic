@@ -70,6 +70,42 @@ export function localizedPresetCategoriesToTransactionCategoryCreateWithSubCateg
     return categories;
 }
 
+export function flattenCategoryTree(categories?: TransactionCategory[]): TransactionCategory[] {
+    const result: TransactionCategory[] = [];
+
+    if (!categories) {
+        return result;
+    }
+
+    for (const category of categories) {
+        result.push(category);
+
+        if (category.subCategories) {
+            result.push(...flattenCategoryTree(category.subCategories));
+        }
+    }
+
+    return result;
+}
+
+export function getAllLeafCategories(categories?: TransactionCategory[]): TransactionCategory[] {
+    const result: TransactionCategory[] = [];
+
+    if (!categories) {
+        return result;
+    }
+
+    for (const category of categories) {
+        if (!category.subCategories || category.subCategories.length === 0) {
+            result.push(category);
+        } else {
+            result.push(...getAllLeafCategories(category.subCategories));
+        }
+    }
+
+    return result;
+}
+
 export function getSecondaryTransactionMapByName(allCategories?: TransactionCategory[]): Record<string, TransactionCategory> {
     const ret: Record<string, TransactionCategory> = {};
 
@@ -77,59 +113,79 @@ export function getSecondaryTransactionMapByName(allCategories?: TransactionCate
         return ret;
     }
 
-    for (const category of allCategories) {
-        if (category.subCategories) {
-            for (const subCategory of category.subCategories) {
-                ret[subCategory.name] = subCategory;
-            }
-        }
+    const allFlat = flattenCategoryTree(allCategories);
+
+    for (const category of allFlat) {
+        ret[category.name] = category;
     }
 
     return ret;
 }
 
-export function getTransactionPrimaryCategoryName(categoryId: string | null | undefined, allCategories?: TransactionCategory[]): string {
-    if (!allCategories) {
-        return '';
+export function getTransactionCategoryFullPathName(categoryId: string | null | undefined, allCategories?: TransactionCategory[]): string[] {
+    if (!allCategories || !categoryId) {
+        return [];
     }
 
-    for (const category of allCategories) {
-        const subCategoryList = category.subCategories;
+    function search(nodes: TransactionCategory[], targetId: string, path: string[]): boolean {
+        for (const node of nodes) {
+            path.push(node.name);
 
-        if (!subCategoryList) {
-            continue;
-        }
-
-        for (const subCategory of subCategoryList) {
-            if (subCategory.id === categoryId) {
-                return category.name;
+            if (node.id === targetId) {
+                return true;
             }
+
+            if (node.subCategories && search(node.subCategories, targetId, path)) {
+                return true;
+            }
+
+            path.pop();
         }
+
+        return false;
     }
 
-    return '';
+    const path: string[] = [];
+    search(allCategories, categoryId, path);
+    return path;
+}
+
+// backward compatibility
+export function getTransactionPrimaryCategoryName(categoryId: string | null | undefined, allCategories?: TransactionCategory[]): string {
+    const path = getTransactionCategoryFullPathName(categoryId, allCategories);
+    return path.length > 0 ? path[0] as string : '';
 }
 
 export function getTransactionSecondaryCategoryName(categoryId: string | null | undefined, allCategories?: TransactionCategory[]): string {
-    if (!allCategories) {
-        return '';
-    }
+    const path = getTransactionCategoryFullPathName(categoryId, allCategories);
+    return path.length > 1 ? path[path.length - 1] as string : (path.length > 0 ? path[0] as string : '');
+}
 
-    for (const category of allCategories) {
-        const subCategoryList = category.subCategories;
+function filterCategoryTreeRecursive(categories: TransactionCategory[], lowercaseFilterContent: string, showHidden: boolean): TransactionCategory[] {
+    const result: TransactionCategory[] = [];
 
-        if (!subCategoryList) {
+    for (const category of categories) {
+        if (!showHidden && category.hidden) {
             continue;
         }
 
-        for (const subCategory of subCategoryList) {
-            if (subCategory.id === categoryId) {
-                return subCategory.name;
-            }
+        const categoryMatchesName = !lowercaseFilterContent || category.name.toLowerCase().includes(lowercaseFilterContent);
+        let filteredChildren: TransactionCategory[] | undefined;
+
+        if (category.subCategories && category.subCategories.length > 0) {
+            filteredChildren = filterCategoryTreeRecursive(category.subCategories, lowercaseFilterContent, showHidden);
         }
+
+        if (!categoryMatchesName && (!filteredChildren || filteredChildren.length < 1)) {
+            continue;
+        }
+
+        const filteredCategory = category.clone();
+        filteredCategory.subCategories = filteredChildren || [];
+        result.push(filteredCategory);
     }
 
-    return '';
+    return result;
 }
 
 export function filterTransactionCategories(allTransactionCategories: Record<number, TransactionCategory[]>, allowCategoryTypes?: Record<number, boolean>, allowCategoryName?: string, showHidden?: boolean): Record<string, TransactionCategory[]> {
@@ -153,44 +209,20 @@ export function filterTransactionCategories(allTransactionCategories: Record<num
             continue;
         }
 
-        const allFilteredCategories: TransactionCategory[] = [];
-
-        for (const category of allCategories) {
-            if (!showHidden && category.hidden) {
-                continue;
-            }
-
-            const categoryMatchesName = !lowercaseFilterContent || category.name.toLowerCase().includes(lowercaseFilterContent);
-            const filteredSubCategories: TransactionCategory[] = [];
-
-            if (category.subCategories) {
-                for (const subCategory of category.subCategories) {
-                    if (!showHidden && subCategory.hidden) {
-                        continue;
-                    }
-
-                    if (!categoryMatchesName && lowercaseFilterContent && !subCategory.name.toLowerCase().includes(lowercaseFilterContent)) {
-                        continue;
-                    }
-
-                    const filteredSubCategory = subCategory.clone();
-                    filteredSubCategories.push(filteredSubCategory);
-                }
-            }
-
-            if (!categoryMatchesName && filteredSubCategories.length < 1) {
-                continue;
-            }
-
-            const filteredCategory = category.clone();
-            filteredCategory.subCategories = filteredSubCategories;
-            allFilteredCategories.push(filteredCategory);
-        }
-
-        ret[`${categoryType}`] = allFilteredCategories;
+        ret[`${categoryType}`] = filterCategoryTreeRecursive(allCategories, lowercaseFilterContent, showHidden ?? false);
     }
 
     return ret;
+}
+
+export function allVisibleCategoriesByType(allTransactionCategories: Record<number, TransactionCategory[]>, categoryType: number): TransactionCategory[] {
+    const allCategories = allTransactionCategories[categoryType];
+
+    if (!allCategories) {
+        return [];
+    }
+
+    return flattenCategoryTree(allCategories).filter(c => !c.hidden);
 }
 
 export function allVisiblePrimaryTransactionCategoriesByType(allTransactionCategories: Record<number, TransactionCategory[]>, categoryType: number): TransactionCategory[] {
@@ -234,34 +266,30 @@ export function getFinalCategoryIdsByFilteredCategoryIds(allTransactionCategorie
     return finalCategoryIds;
 }
 
-export function isSubCategoryIdAvailable(categories: TransactionCategory[], categoryId: string): boolean {
+export function isCategoryIdAvailable(categories: TransactionCategory[], categoryId: string): boolean {
     if (!categories || !categories.length) {
         return false;
     }
 
-    for (const primaryCategory of categories) {
-        if (primaryCategory.hidden) {
+    for (const category of categories) {
+        if (category.hidden) {
             continue;
         }
 
-        const subCategoryList = primaryCategory.subCategories;
-
-        if (!subCategoryList) {
-            continue;
+        if (category.id === categoryId) {
+            return true;
         }
 
-        for (const secondaryCategory of subCategoryList) {
-            if (secondaryCategory.hidden) {
-                continue;
-            }
-
-            if (secondaryCategory.id === categoryId) {
-                return true;
-            }
+        if (category.subCategories && isCategoryIdAvailable(category.subCategories, categoryId)) {
+            return true;
         }
     }
 
     return false;
+}
+
+export function isSubCategoryIdAvailable(categories: TransactionCategory[], categoryId: string): boolean {
+    return isCategoryIdAvailable(categories, categoryId);
 }
 
 export function getFirstVisibleCategoryId(categories?: TransactionCategory[]): string {
@@ -269,24 +297,19 @@ export function getFirstVisibleCategoryId(categories?: TransactionCategory[]): s
         return '';
     }
 
-    for (const primaryCategory of categories) {
-        if (primaryCategory.hidden) {
+    for (const category of categories) {
+        if (category.hidden) {
             continue;
         }
 
-        const subCategoryList = primaryCategory.subCategories;
-
-        if (!subCategoryList) {
-            continue;
-        }
-
-        for (const secondaryCategory of subCategoryList) {
-            if (secondaryCategory.hidden) {
-                continue;
+        if (category.subCategories && category.subCategories.length > 0) {
+            const firstChildId = getFirstVisibleCategoryId(category.subCategories);
+            if (firstChildId) {
+                return firstChildId;
             }
-
-            return secondaryCategory.id;
         }
+
+        return category.id;
     }
 
     return '';
@@ -297,26 +320,28 @@ export function getFirstAvailableSubCategoryId(categories: TransactionCategory[]
         return '';
     }
 
-    for (const primaryCategory of categories) {
-        if (primaryCategory.hidden || primaryCategory.id !== categoryId) {
+    for (const category of categories) {
+        if (category.hidden) {
             continue;
         }
 
-        const subCategoryList = primaryCategory.subCategories;
-
-        if (!subCategoryList) {
+        if (category.id === categoryId) {
+            if (category.subCategories && category.subCategories.length > 0) {
+                for (const child of category.subCategories) {
+                    if (!child.hidden) {
+                        return child.id;
+                    }
+                }
+            }
             return '';
         }
 
-        for (const secondaryCategory of subCategoryList) {
-            if (secondaryCategory.hidden) {
-                continue;
+        if (category.subCategories) {
+            const found = getFirstAvailableSubCategoryId(category.subCategories, categoryId);
+            if (found) {
+                return found;
             }
-
-            return secondaryCategory.id;
         }
-
-        return '';
     }
 
     return '';
@@ -371,6 +396,7 @@ export function selectAllSubCategories(filterCategoryIds: Record<string, boolean
 
     for (const subCategory of category.subCategories) {
         filterCategoryIds[subCategory.id] = value;
+        selectAllSubCategories(filterCategoryIds, value, subCategory);
     }
 }
 
@@ -404,7 +430,7 @@ export function selectInvert(filterCategoryIds: Record<string, boolean>, allTran
     }
 }
 
-export function isCategoryOrSubCategoriesAllChecked(category: TransactionCategory, filterCategoryIds: Record<string, boolean>): boolean {
+function areAllDescendantsChecked(category: TransactionCategory, filterCategoryIds: Record<string, boolean>): boolean {
     if (!category.subCategories || category.subCategories.length < 1) {
         return !filterCategoryIds[category.id];
     }
@@ -413,9 +439,69 @@ export function isCategoryOrSubCategoriesAllChecked(category: TransactionCategor
         if (filterCategoryIds[subCategory.id]) {
             return false;
         }
+
+        if (!areAllDescendantsChecked(subCategory, filterCategoryIds)) {
+            return false;
+        }
     }
 
     return true;
+}
+
+export function isCategoryOrSubCategoriesAllChecked(category: TransactionCategory, filterCategoryIds: Record<string, boolean>): boolean {
+    return areAllDescendantsChecked(category, filterCategoryIds);
+}
+
+export function isCategoryOrAllDescendantsChecked(category: TransactionCategory, filterCategoryIds: Record<string, boolean>): boolean {
+    if (!category.subCategories || category.subCategories.length < 1) {
+        return !filterCategoryIds[category.id];
+    }
+
+    for (const subCategory of category.subCategories) {
+        if (filterCategoryIds[subCategory.id]) {
+            return false;
+        }
+
+        if (!isCategoryOrAllDescendantsChecked(subCategory, filterCategoryIds)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function isAllSubTreeChecked(category: TransactionCategory, filterCategoryIds: Record<string, boolean>): boolean {
+    if (!category.subCategories || category.subCategories.length < 1) {
+        return !filterCategoryIds[category.id];
+    }
+
+    for (const subCategory of category.subCategories) {
+        if (!isAllSubTreeChecked(subCategory, filterCategoryIds)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function countCheckedSubTree(category: TransactionCategory, filterCategoryIds: Record<string, boolean>): { checked: number; total: number } {
+    if (!category.subCategories || category.subCategories.length < 1) {
+        return {
+            checked: filterCategoryIds[category.id] ? 0 : 1,
+            total: 1
+        };
+    }
+
+    let checked = 0;
+    let total = 0;
+
+    for (const subCategory of category.subCategories) {
+        const result = countCheckedSubTree(subCategory, filterCategoryIds);
+        checked += result.checked;
+        total += result.total;
+    }
+
+    return { checked, total };
 }
 
 export function isSubCategoriesAllChecked(category: TransactionCategory, filterCategoryIds: Record<string, boolean>): boolean {
@@ -424,7 +510,7 @@ export function isSubCategoriesAllChecked(category: TransactionCategory, filterC
     }
 
     for (const subCategory of category.subCategories) {
-        if (filterCategoryIds[subCategory.id]) {
+        if (!isAllSubTreeChecked(subCategory, filterCategoryIds)) {
             return false;
         }
     }
@@ -433,17 +519,28 @@ export function isSubCategoriesAllChecked(category: TransactionCategory, filterC
 }
 
 export function isSubCategoriesHasButNotAllChecked(category: TransactionCategory, filterCategoryIds: Record<string, boolean>): boolean {
-    let checkedCount = 0;
-
     if (!category.subCategories || category.subCategories.length < 1) {
         return false;
     }
 
+    let hasChecked = false;
+    let hasUnchecked = false;
+
     for (const subCategory of category.subCategories) {
-        if (!filterCategoryIds[subCategory.id]) {
-            checkedCount++;
+        const result = countCheckedSubTree(subCategory, filterCategoryIds);
+
+        if (result.checked > 0) {
+            hasChecked = true;
+        }
+
+        if (result.checked < result.total) {
+            hasUnchecked = true;
+        }
+
+        if (hasChecked && hasUnchecked) {
+            return true;
         }
     }
 
-    return checkedCount > 0 && checkedCount < category.subCategories.length;
+    return false;
 }

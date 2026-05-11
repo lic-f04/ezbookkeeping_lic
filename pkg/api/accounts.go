@@ -167,7 +167,8 @@ func (a *AccountsApi) AccountCreateHandler(c *core.WebContext) (any, *errs.Error
 		return nil, errs.ErrCannotSetStatementDateForNonCreditCard
 	}
 
-	if accountCreateReq.Type == models.ACCOUNT_TYPE_SINGLE_ACCOUNT {
+	switch accountCreateReq.Type {
+	case models.ACCOUNT_TYPE_SINGLE_ACCOUNT:
 		if len(accountCreateReq.SubAccounts) > 0 {
 			log.Warnf(c, "[accounts.AccountCreateHandler] account cannot have any sub-accounts")
 			return nil, errs.ErrAccountCannotHaveSubAccounts
@@ -182,7 +183,7 @@ func (a *AccountsApi) AccountCreateHandler(c *core.WebContext) (any, *errs.Error
 			log.Warnf(c, "[accounts.AccountCreateHandler] account balance time is not set")
 			return nil, errs.ErrAccountBalanceTimeNotSet
 		}
-	} else if accountCreateReq.Type == models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS {
+	case models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS:
 		if len(accountCreateReq.SubAccounts) < 1 {
 			log.Warnf(c, "[accounts.AccountCreateHandler] account does not have any sub-accounts")
 			return nil, errs.ErrAccountHaveNoSubAccount
@@ -226,7 +227,7 @@ func (a *AccountsApi) AccountCreateHandler(c *core.WebContext) (any, *errs.Error
 				return nil, errs.ErrCannotSetStatementDateForSubAccount
 			}
 		}
-	} else {
+	default:
 		log.Warnf(c, "[accounts.AccountCreateHandler] account type invalid, type is %d", accountCreateReq.Type)
 		return nil, errs.ErrAccountTypeInvalid
 	}
@@ -359,12 +360,13 @@ func (a *AccountsApi) AccountModifyHandler(c *core.WebContext) (any, *errs.Error
 		return nil, errs.ErrNotSupportedChangeBalanceTime
 	}
 
-	if mainAccount.Type == models.ACCOUNT_TYPE_SINGLE_ACCOUNT {
+	switch mainAccount.Type {
+	case models.ACCOUNT_TYPE_SINGLE_ACCOUNT:
 		if len(accountModifyReq.SubAccounts) > 0 {
 			log.Warnf(c, "[accounts.AccountModifyHandler] account cannot have any sub-accounts")
 			return nil, errs.ErrAccountCannotHaveSubAccounts
 		}
-	} else if mainAccount.Type == models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS {
+	case models.ACCOUNT_TYPE_MULTI_SUB_ACCOUNTS:
 		if len(accountModifyReq.SubAccounts) < 1 {
 			log.Warnf(c, "[accounts.AccountModifyHandler] account does not have any sub-accounts")
 			return nil, errs.ErrAccountHaveNoSubAccount

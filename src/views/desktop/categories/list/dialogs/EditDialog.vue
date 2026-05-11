@@ -20,30 +20,13 @@
                                 v-model="category.name"
                             />
                         </v-col>
-                        <v-col cols="12" md="12" v-if="editCategoryId && category.parentId && category.parentId !== '0'">
-                            <v-select
-                                item-title="name"
-                                item-value="id"
-                                persistent-placeholder
+                        <v-col cols="12" md="12">
+                            <TreeCategorySelect
                                 :disabled="loading || submitting"
-                                :label="tt('Primary Category')"
-                                :placeholder="tt('Primary Category')"
+                                :label="tt('Parent Category')"
                                 :items="allAvailableCategories"
-                                :no-data-text="tt('No available primary category')"
-                                v-model="category.parentId"
-                            >
-                                <template #item="{ props, item }">
-                                    <v-list-item v-bind="props">
-                                        <template #prepend>
-                                            <ItemIcon class="me-2" icon-type="category"
-                                                      :icon-id="item.raw.icon" :color="item.raw.color"></ItemIcon>
-                                        </template>
-                                        <template #title>
-                                            <div class="text-truncate">{{ item.raw.name }}</div>
-                                        </template>
-                                    </v-list-item>
-                                </template>
-                            </v-select>
+                                :filter-no-items-text="tt('No available category')"
+                                v-model="parentCategoryId" />
                         </v-col>
                         <v-col cols="12" md="6">
                             <icon-select icon-type="category"
@@ -140,6 +123,11 @@ const {
 const transactionCategoriesStore = useTransactionCategoriesStore();
 
 const snackbar = useTemplateRef<SnackBarType>('snackbar');
+
+const parentCategoryId = computed<string>({
+    get: () => category.value.parentId === '0' ? '' : category.value.parentId,
+    set: (value) => { category.value.parentId = value || '0'; }
+});
 
 const showState = ref<boolean>(false);
 

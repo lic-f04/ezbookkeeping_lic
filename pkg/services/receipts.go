@@ -315,6 +315,30 @@ func (s *ReceiptService) recalculateReceiptTotal(c core.Context, sess *xorm.Sess
 	return err
 }
 
+// DeleteAllReceipts deletes all existed receipts from database
+func (s *ReceiptService) DeleteAllReceipts(c core.Context, uid int64) error {
+	if uid <= 0 {
+		return errs.ErrUserIdInvalid
+	}
+
+	now := time.Now().Unix()
+
+	updateModel := &models.Receipt{
+		Deleted:         true,
+		DeletedUnixTime: now,
+	}
+
+	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+		_, err := sess.Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=?", uid, false).Update(updateModel)
+
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
 // RecalculateReceiptTotalById recalculates the total amount of a receipt by its id
 func (s *ReceiptService) RecalculateReceiptTotalById(c core.Context, uid int64, receiptId int64) error {
 	if receiptId <= 0 {

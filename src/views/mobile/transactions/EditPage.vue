@@ -10,17 +10,17 @@
         </f7-navbar>
 
         <f7-block :class="{ 'no-margin-top margin-bottom': true, 'disabled': loading }">
-            <f7-segmented strong round :class="{ 'readonly': pageTypeAndMode?.type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add }">
+            <f7-segmented strong round :class="{ 'readonly': pageTypeAndMode?.type === TransactionEditPageType.Transaction && mode === TransactionEditPageMode.View }">
                 <f7-button round :text="tt('Expense')" :active="transaction.type === TransactionType.Expense"
-                           :disabled="pageTypeAndMode?.type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add && transaction.type !== TransactionType.Expense"
+                           :disabled="pageTypeAndMode?.type === TransactionEditPageType.Transaction && mode === TransactionEditPageMode.View && transaction.type !== TransactionType.Expense"
                            v-if="transaction.type !== TransactionType.ModifyBalance"
                            @click="transaction.type = TransactionType.Expense"></f7-button>
                 <f7-button round :text="tt('Income')" :active="transaction.type === TransactionType.Income"
-                           :disabled="pageTypeAndMode?.type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add && transaction.type !== TransactionType.Income"
+                           :disabled="pageTypeAndMode?.type === TransactionEditPageType.Transaction && mode === TransactionEditPageMode.View && transaction.type !== TransactionType.Income"
                            v-if="transaction.type !== TransactionType.ModifyBalance"
                            @click="transaction.type = TransactionType.Income"></f7-button>
                 <f7-button round :text="tt('Transfer')" :active="transaction.type === TransactionType.Transfer"
-                           :disabled="pageTypeAndMode?.type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add && transaction.type !== TransactionType.Transfer"
+                           :disabled="pageTypeAndMode?.type === TransactionEditPageType.Transaction && mode === TransactionEditPageMode.View && transaction.type !== TransactionType.Transfer"
                            v-if="transaction.type !== TransactionType.ModifyBalance"
                            @click="transaction.type = TransactionType.Transfer"></f7-button>
                 <f7-button round :text="tt('Modify Balance')" :active="transaction.type === TransactionType.ModifyBalance"
@@ -206,24 +206,20 @@
             >
                 <template #title>
                     <div class="list-item-custom-title" v-if="hasVisibleExpenseCategories">
-                        <span>{{ getTransactionPrimaryCategoryName(transaction.expenseCategoryId, allCategories[CategoryType.Expense]) }}</span>
-                        <f7-icon class="category-separate-icon icon-with-direction" f7="chevron_right"></f7-icon>
-                        <span>{{ getTransactionSecondaryCategoryName(transaction.expenseCategoryId, allCategories[CategoryType.Expense]) }}</span>
+                        <template v-for="(name, idx) in getTransactionCategoryFullPathName(transaction.expenseCategoryId, allCategories[CategoryType.Expense])">
+                            <f7-icon class="category-separate-icon icon-with-direction" f7="chevron_right" v-if="idx > 0"></f7-icon>
+                            <span>{{ name }}</span>
+                        </template>
                     </div>
                     <div class="list-item-custom-title" v-else-if="!hasVisibleExpenseCategories">
                         <span>{{ tt('None') }}</span>
                     </div>
                 </template>
-                <tree-view-selection-sheet primary-key-field="id" primary-title-field="name"
-                                           primary-icon-field="icon" primary-icon-type="category" primary-color-field="color"
-                                           primary-hidden-field="hidden" primary-sub-items-field="subCategories"
-                                           secondary-key-field="id" secondary-value-field="id" secondary-title-field="name"
-                                           secondary-icon-field="icon" secondary-icon-type="category" secondary-color-field="color"
-                                           secondary-hidden-field="hidden"
-                                           :enable-filter="true" :filter-placeholder="tt('Find category')" :filter-no-items-text="tt('No available category')"
-                                           :items="allCategories[CategoryType.Expense]"
-                                           v-model:show="showCategorySheet"
-                                           v-model="transaction.expenseCategoryId">
+                <tree-view-selection-sheet
+                    :enable-filter="true" :filter-placeholder="tt('Find category')" :filter-no-items-text="tt('No available category')"
+                    :items="allCategories[CategoryType.Expense]"
+                    v-model:show="showCategorySheet"
+                    v-model="transaction.expenseCategoryId">
                 </tree-view-selection-sheet>
             </f7-list-item>
 
@@ -238,24 +234,20 @@
             >
                 <template #title>
                     <div class="list-item-custom-title" v-if="hasVisibleIncomeCategories">
-                        <span>{{ getTransactionPrimaryCategoryName(transaction.incomeCategoryId, allCategories[CategoryType.Income]) }}</span>
-                        <f7-icon class="category-separate-icon icon-with-direction" f7="chevron_right"></f7-icon>
-                        <span>{{ getTransactionSecondaryCategoryName(transaction.incomeCategoryId, allCategories[CategoryType.Income]) }}</span>
+                        <template v-for="(name, idx) in getTransactionCategoryFullPathName(transaction.incomeCategoryId, allCategories[CategoryType.Income])">
+                            <f7-icon class="category-separate-icon icon-with-direction" f7="chevron_right" v-if="idx > 0"></f7-icon>
+                            <span>{{ name }}</span>
+                        </template>
                     </div>
                     <div class="list-item-custom-title" v-else-if="!hasVisibleIncomeCategories">
                         <span>{{ tt('None') }}</span>
                     </div>
                 </template>
-                <tree-view-selection-sheet primary-key-field="id" primary-title-field="name"
-                                           primary-icon-field="icon" primary-icon-type="category" primary-color-field="color"
-                                           primary-hidden-field="hidden" primary-sub-items-field="subCategories"
-                                           secondary-key-field="id" secondary-value-field="id" secondary-title-field="name"
-                                           secondary-icon-field="icon" secondary-icon-type="category" secondary-color-field="color"
-                                           secondary-hidden-field="hidden"
-                                           :enable-filter="true" :filter-placeholder="tt('Find category')" :filter-no-items-text="tt('No available category')"
-                                           :items="allCategories[CategoryType.Income]"
-                                           v-model:show="showCategorySheet"
-                                           v-model="transaction.incomeCategoryId">
+                <tree-view-selection-sheet
+                    :enable-filter="true" :filter-placeholder="tt('Find category')" :filter-no-items-text="tt('No available category')"
+                    :items="allCategories[CategoryType.Income]"
+                    v-model:show="showCategorySheet"
+                    v-model="transaction.incomeCategoryId">
                 </tree-view-selection-sheet>
             </f7-list-item>
 
@@ -270,24 +262,20 @@
             >
                 <template #title>
                     <div class="list-item-custom-title" v-if="hasVisibleTransferCategories">
-                        <span>{{ getTransactionPrimaryCategoryName(transaction.transferCategoryId, allCategories[CategoryType.Transfer]) }}</span>
-                        <f7-icon class="category-separate-icon icon-with-direction" f7="chevron_right"></f7-icon>
-                        <span>{{ getTransactionSecondaryCategoryName(transaction.transferCategoryId, allCategories[CategoryType.Transfer]) }}</span>
+                        <template v-for="(name, idx) in getTransactionCategoryFullPathName(transaction.transferCategoryId, allCategories[CategoryType.Transfer])">
+                            <f7-icon class="category-separate-icon icon-with-direction" f7="chevron_right" v-if="idx > 0"></f7-icon>
+                            <span>{{ name }}</span>
+                        </template>
                     </div>
                     <div class="list-item-custom-title" v-else-if="!hasVisibleTransferCategories">
                         <span>{{ tt('None') }}</span>
                     </div>
                 </template>
-                <tree-view-selection-sheet primary-key-field="id" primary-title-field="name"
-                                           primary-icon-field="icon" primary-icon-type="category" primary-color-field="color"
-                                           primary-hidden-field="hidden" primary-sub-items-field="subCategories"
-                                           secondary-key-field="id" secondary-value-field="id" secondary-title-field="name"
-                                           secondary-icon-field="icon" secondary-icon-type="category" secondary-color-field="color"
-                                           secondary-hidden-field="hidden"
-                                           :enable-filter="true" :filter-placeholder="tt('Find category')" :filter-no-items-text="tt('No available category')"
-                                           :items="allCategories[CategoryType.Transfer]"
-                                           v-model:show="showCategorySheet"
-                                           v-model="transaction.transferCategoryId">
+                <tree-view-selection-sheet
+                    :enable-filter="true" :filter-placeholder="tt('Find category')" :filter-no-items-text="tt('No available category')"
+                    :items="allCategories[CategoryType.Transfer]"
+                    v-model:show="showCategorySheet"
+                    v-model="transaction.transferCategoryId">
                 </tree-view-selection-sheet>
             </f7-list-item>
 
@@ -550,7 +538,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, useTemplateRef } from 'vue';
+import { ref, computed, watch, useTemplateRef } from 'vue';
 import type { PhotoBrowser, Router } from 'framework7/types';
 
 import { useI18n } from '@/locales/helpers.ts';
@@ -595,7 +583,7 @@ import {
 } from '@/lib/datetime.ts';
 import { formatCoordinate } from '@/lib/coordinate.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
-import { getTransactionPrimaryCategoryName, getTransactionSecondaryCategoryName } from '@/lib/category.ts';
+import { getTransactionCategoryFullPathName } from '@/lib/category.ts';
 import { type SetTransactionOptions } from '@/lib/transaction.ts';
 import { getMapProvider, isTransactionPicturesEnabled } from '@/lib/server_settings.ts';
 import logger from '@/lib/logger.ts';
@@ -1441,6 +1429,25 @@ function onPageAfterIn(): void {
         updateGeoLocation(false);
     }
 }
+
+watch(() => transaction.value.type, (newType, oldType) => {
+    if (mode.value !== TransactionEditPageMode.Edit || oldType === undefined) {
+        return;
+    }
+
+    transaction.value.expenseCategoryId = '';
+    transaction.value.incomeCategoryId = '';
+    transaction.value.transferCategoryId = '';
+
+    if (oldType === TransactionType.Transfer && newType !== TransactionType.Transfer) {
+        transaction.value.destinationAccountId = '';
+        transaction.value.destinationAmount = 0;
+    }
+
+    if (transaction.value.sourceAmount < 0) {
+        transaction.value.sourceAmount = Math.abs(transaction.value.sourceAmount);
+    }
+});
 
 function onPageBeforeOut(): void {
     if (submitted.value || pageTypeAndMode?.type !== TransactionEditPageType.Transaction || mode.value !== TransactionEditPageMode.Add || query['noTransactionDraft'] === 'true' || addByTemplateId.value || duplicateFromId.value) {

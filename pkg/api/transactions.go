@@ -1384,7 +1384,6 @@ func (a *TransactionsApi) TransactionModifyHandler(c *core.WebContext) (any, *er
 		}
 	}
 
-	newTransaction.Type = transaction.Type
 	newTransactionResp := newTransaction.ToTransactionInfoResponse(tagIds, transactionEditable)
 	newTransactionResp.Pictures = a.GetTransactionPictureInfoResponseList(newPictureInfos)
 

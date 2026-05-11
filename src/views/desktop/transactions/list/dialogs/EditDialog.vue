@@ -178,75 +178,51 @@
                 <!-- ========== КОНЕЦ ПОЛЕЙ КОЛИЧЕСТВО И ЦЕНА ========== -->
 
                 <v-col cols="12" md="12" v-if="transaction.type === TransactionType.Expense">
-                  <v-tooltip :disabled="hasVisibleExpenseCategories" :text="hasVisibleExpenseCategories ? '' : tt('No secondary expense categories are available')">
+                  <v-tooltip :disabled="hasVisibleExpenseCategories" :text="hasVisibleExpenseCategories ? '' : tt('No expense categories are available')">
                     <template v-slot:activator="{ props }">
                       <div v-bind="props" class="d-block">
-                        <two-column-select primary-key-field="id" primary-value-field="id" primary-title-field="name"
-                          primary-icon-field="icon" primary-icon-type="category" primary-color-field="color"
-                          primary-hidden-field="hidden" primary-sub-items-field="subCategories"
-                          secondary-key-field="id" secondary-value-field="id" secondary-title-field="name"
-                          secondary-icon-field="icon" secondary-icon-type="category" secondary-color-field="color"
-                          secondary-hidden-field="hidden"
+                        <tree-category-select
                           :readonly="mode === TransactionEditPageMode.View"
                           :disabled="loading || submitting || !hasVisibleExpenseCategories"
                           :enable-filter="true" :filter-placeholder="tt('Find category')" :filter-no-items-text="tt('No available category')"
-                          :show-selection-primary-text="true"
-                          :custom-selection-primary-text="getTransactionPrimaryCategoryName(transaction.expenseCategoryId, allCategories[CategoryType.Expense])"
-                          :custom-selection-secondary-text="getTransactionSecondaryCategoryName(transaction.expenseCategoryId, allCategories[CategoryType.Expense])"
-                          :label="tt('Category')" :placeholder="tt('Category')"
+                          :label="tt('Category')"
                           :items="allCategories[CategoryType.Expense] || []"
                           v-model="transaction.expenseCategoryId">
-                        </two-column-select>
+                        </tree-category-select>
                       </div>
                     </template>
                   </v-tooltip>
                 </v-col>
 
                 <v-col cols="12" md="12" v-if="transaction.type === TransactionType.Income">
-                  <v-tooltip :disabled="hasVisibleIncomeCategories" :text="hasVisibleIncomeCategories ? '' : tt('No secondary income categories are available')">
+                  <v-tooltip :disabled="hasVisibleIncomeCategories" :text="hasVisibleIncomeCategories ? '' : tt('No income categories are available')">
                     <template v-slot:activator="{ props }">
                       <div v-bind="props" class="d-block">
-                        <two-column-select primary-key-field="id" primary-value-field="id" primary-title-field="name"
-                          primary-icon-field="icon" primary-icon-type="category" primary-color-field="color"
-                          primary-hidden-field="hidden" primary-sub-items-field="subCategories"
-                          secondary-key-field="id" secondary-value-field="id" secondary-title-field="name"
-                          secondary-icon-field="icon" secondary-icon-type="category" secondary-color-field="color"
-                          secondary-hidden-field="hidden"
+                        <tree-category-select
                           :readonly="mode === TransactionEditPageMode.View"
                           :disabled="loading || submitting || !hasVisibleIncomeCategories"
                           :enable-filter="true" :filter-placeholder="tt('Find category')" :filter-no-items-text="tt('No available category')"
-                          :show-selection-primary-text="true"
-                          :custom-selection-primary-text="getTransactionPrimaryCategoryName(transaction.incomeCategoryId, allCategories[CategoryType.Income])"
-                          :custom-selection-secondary-text="getTransactionSecondaryCategoryName(transaction.incomeCategoryId, allCategories[CategoryType.Income])"
-                          :label="tt('Category')" :placeholder="tt('Category')"
+                          :label="tt('Category')"
                           :items="allCategories[CategoryType.Income] || []"
                           v-model="transaction.incomeCategoryId">
-                        </two-column-select>
+                        </tree-category-select>
                       </div>
                     </template>
                   </v-tooltip>
                 </v-col>
 
                 <v-col cols="12" md="12" v-if="transaction.type === TransactionType.Transfer">
-                  <v-tooltip :disabled="hasVisibleTransferCategories" :text="hasVisibleTransferCategories ? '' : tt('No secondary transfer categories are available')">
+                  <v-tooltip :disabled="hasVisibleTransferCategories" :text="hasVisibleTransferCategories ? '' : tt('No transfer categories are available')">
                     <template v-slot:activator="{ props }">
                       <div v-bind="props" class="d-block">
-                        <two-column-select primary-key-field="id" primary-value-field="id" primary-title-field="name"
-                          primary-icon-field="icon" primary-icon-type="category" primary-color-field="color"
-                          primary-hidden-field="hidden" primary-sub-items-field="subCategories"
-                          secondary-key-field="id" secondary-value-field="id" secondary-title-field="name"
-                          secondary-icon-field="icon" secondary-icon-type="category" secondary-color-field="color"
-                          secondary-hidden-field="hidden"
+                        <tree-category-select
                           :readonly="mode === TransactionEditPageMode.View"
                           :disabled="loading || submitting || !hasVisibleTransferCategories"
                           :enable-filter="true" :filter-placeholder="tt('Find category')" :filter-no-items-text="tt('No available category')"
-                          :show-selection-primary-text="true"
-                          :custom-selection-primary-text="getTransactionPrimaryCategoryName(transaction.transferCategoryId, allCategories[CategoryType.Transfer])"
-                          :custom-selection-secondary-text="getTransactionSecondaryCategoryName(transaction.transferCategoryId, allCategories[CategoryType.Transfer])"
-                          :label="tt('Category')" :placeholder="tt('Category')"
+                          :label="tt('Category')"
                           :items="allCategories[CategoryType.Transfer] || []"
                           v-model="transaction.transferCategoryId">
-                        </two-column-select>
+                        </tree-category-select>
                       </div>
                     </template>
                   </v-tooltip>
@@ -566,10 +542,6 @@ import {
 } from '@/lib/datetime.ts';
 import { formatCoordinate } from '@/lib/coordinate.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
-import {
-  getTransactionPrimaryCategoryName,
-  getTransactionSecondaryCategoryName
-} from '@/lib/category.ts';
 import {
   isTransactionPicturesEnabled,
   getMapProvider
@@ -1247,11 +1219,8 @@ watch(activeTab, (newValue) => {
   }
 });
 
-const previousType = ref<number | null>(null);
-
 watch(() => transaction.value.type, (newType, oldType) => {
   if (mode.value !== TransactionEditPageMode.Edit || oldType === undefined) {
-    previousType.value = oldType ?? null;
     return;
   }
 
@@ -1264,11 +1233,7 @@ watch(() => transaction.value.type, (newType, oldType) => {
     transaction.value.destinationAmount = 0;
   }
 
-  if (newType === TransactionType.Expense && transaction.value.sourceAmount > 0) {
-    transaction.value.sourceAmount = -transaction.value.sourceAmount;
-  } else if (newType === TransactionType.Income && transaction.value.sourceAmount < 0) {
-    transaction.value.sourceAmount = Math.abs(transaction.value.sourceAmount);
-  } else if (newType === TransactionType.Transfer) {
+  if (transaction.value.sourceAmount < 0) {
     transaction.value.sourceAmount = Math.abs(transaction.value.sourceAmount);
   }
 });

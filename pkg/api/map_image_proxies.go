@@ -54,19 +54,20 @@ func (p *MapImageProxy) initializeHttpTransport() {
 // MapTileImageProxyHandler returns map tile image
 func (p *MapImageProxy) MapTileImageProxyHandler(c *core.WebContext) (*httputil.ReverseProxy, *errs.Error) {
 	return p.mapImageProxyHandler(c, func(c *core.WebContext, mapProvider string) (string, *errs.Error) {
-		if mapProvider == settings.OpenStreetMapProvider {
+		switch mapProvider {
+		case settings.OpenStreetMapProvider:
 			return openStreetMapTileImageUrlFormat, nil
-		} else if mapProvider == settings.OpenStreetMapHumanitarianStyleProvider {
+		case settings.OpenStreetMapHumanitarianStyleProvider:
 			return openStreetMapHumanitarianStyleTileImageUrlFormat, nil
-		} else if mapProvider == settings.OpenTopoMapProvider {
+		case settings.OpenTopoMapProvider:
 			return openTopoMapTileImageUrlFormat, nil
-		} else if mapProvider == settings.OPNVKarteMapProvider {
+		case settings.OPNVKarteMapProvider:
 			return opnvKarteMapTileImageUrlFormat, nil
-		} else if mapProvider == settings.CyclOSMMapProvider {
+		case settings.CyclOSMMapProvider:
 			return cyclOSMMapTileImageUrlFormat, nil
-		} else if mapProvider == settings.CartoDBMapProvider {
+		case settings.CartoDBMapProvider:
 			return cartoDBMapTileImageUrlFormat, nil
-		} else if mapProvider == settings.TomTomMapProvider {
+		case settings.TomTomMapProvider:
 			targetUrl := tomtomMapTileImageUrlFormat + "?key=" + p.CurrentConfig().TomTomMapAPIKey
 			language := c.Query("language")
 
@@ -75,26 +76,27 @@ func (p *MapImageProxy) MapTileImageProxyHandler(c *core.WebContext) (*httputil.
 			}
 
 			return targetUrl, nil
-		} else if mapProvider == settings.TianDiTuProvider {
+		case settings.TianDiTuProvider:
 			return tianDiTuMapTileImageUrlFormat + "&tk=" + p.CurrentConfig().TianDiTuAPIKey, nil
-		} else if mapProvider == settings.CustomProvider {
+		case settings.CustomProvider:
 			return p.CurrentConfig().CustomMapTileServerTileLayerUrl, nil
+		default:
+			return "", errs.ErrParameterInvalid
 		}
-
-		return "", errs.ErrParameterInvalid
 	})
 }
 
 // MapAnnotationImageProxyHandler returns map annotation image
 func (p *MapImageProxy) MapAnnotationImageProxyHandler(c *core.WebContext) (*httputil.ReverseProxy, *errs.Error) {
 	return p.mapImageProxyHandler(c, func(c *core.WebContext, mapProvider string) (string, *errs.Error) {
-		if mapProvider == settings.TianDiTuProvider {
+		switch mapProvider {
+		case settings.TianDiTuProvider:
 			return tianDiTuMapAnnotationUrlFormat + "&tk=" + p.CurrentConfig().TianDiTuAPIKey, nil
-		} else if mapProvider == settings.CustomProvider {
+		case settings.CustomProvider:
 			return p.CurrentConfig().CustomMapTileServerAnnotationLayerUrl, nil
+		default:
+			return "", errs.ErrParameterInvalid
 		}
-
-		return "", errs.ErrParameterInvalid
 	})
 }
 

@@ -43,7 +43,7 @@ func (a *QrCodesApi) MobileUrlQrCodeHandler(c *core.WebContext) ([]byte, string,
 	return data, "image/png", nil
 }
 
-func (a *QrCodesApi) generateUrlQrCode(c *core.WebContext, url string) ([]byte, *errs.Error) {
+func (a *QrCodesApi) generateUrlQrCode(_ *core.WebContext, url string) ([]byte, *errs.Error) {
 	qrCodeImg, _ := qr.Encode(url, qr.M, qr.Auto)
 	qrCodeImg, _ = barcode.Scale(qrCodeImg, qrCodeDefaultWidth, qrCodeDefaultHeight)
 	imgData := &bytes.Buffer{}

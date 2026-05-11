@@ -5,8 +5,6 @@ import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
 import { CategoryType } from '@/core/category.ts';
 import { TransactionCategory } from '@/models/transaction_category.ts';
 
-import { allVisiblePrimaryTransactionCategoriesByType } from '@/lib/category.ts';
-
 export function useCategoryEditPageBase(type?: CategoryType, parentId?: string) {
     const transactionCategoriesStore = useTransactionCategoriesStore();
 
@@ -16,15 +14,13 @@ export function useCategoryEditPageBase(type?: CategoryType, parentId?: string) 
     const submitting = ref<boolean>(false);
     const category = ref<TransactionCategory>(TransactionCategory.createNewCategory(type, parentId));
 
-    const allAvailableCategories = computed<TransactionCategory[]>(() => allVisiblePrimaryTransactionCategoriesByType(transactionCategoriesStore.allTransactionCategories, category.value.type));
+    const allAvailableCategories = computed<TransactionCategory[]>(() => {
+        return transactionCategoriesStore.allTransactionCategories[category.value.type] ?? [];
+    });
 
     const title = computed<string>(() => {
         if (!editCategoryId.value) {
-            if (category.value.parentId === '0') {
-                return 'Add Primary Category';
-            } else {
-                return 'Add Secondary Category';
-            }
+            return 'Add Category';
         } else {
             return 'Edit Category';
         }

@@ -65,18 +65,16 @@
             <f7-list-item
                 link="#" no-chevron
                 class="list-item-with-header-and-title"
-                :header="tt('Primary Category')"
-                :title="getPrimaryCategoryName(category.parentId)"
+                :header="tt('Parent Category')"
+                :title="getPrimaryCategoryName(parentCategoryId)"
                 @click="showPrimaryCategorySheet = true"
-                v-if="editCategoryId && category.parentId && category.parentId !== '0'"
             >
-                <list-item-selection-sheet value-type="item"
-                                           key-field="id" value-field="id" title-field="name"
-                                           icon-field="icon" icon-type="category" color-field="color"
-                                           :items="allAvailableCategories"
-                                           v-model:show="showPrimaryCategorySheet"
-                                           v-model="category.parentId">
-                </list-item-selection-sheet>
+                <TreeViewSelectionSheet
+                    :items="allAvailableCategories"
+                    :filter-no-items-text="tt('No available category')"
+                    v-model:show="showPrimaryCategorySheet"
+                    v-model="parentCategoryId">
+                </TreeViewSelectionSheet>
             </f7-list-item>
 
             <f7-list-item class="list-item-with-header-and-title list-item-with-multi-item">
@@ -146,7 +144,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import type { Router } from 'framework7/types';
 
 import { useI18n } from '@/locales/helpers.ts';
@@ -159,8 +157,6 @@ import type { ColorValue } from '@/core/color.ts';
 import { CategoryType } from '@/core/category.ts';
 import { ALL_CATEGORY_ICONS } from '@/consts/icon.ts';
 import { ALL_CATEGORY_COLORS } from '@/consts/color.ts';
-import { TransactionCategory } from '@/models/transaction_category.ts';
-
 import { generateRandomUUID } from '@/lib/misc.ts';
 
 const props = defineProps<{
@@ -191,8 +187,15 @@ const showPrimaryCategorySheet = ref<boolean>(false);
 const showIconSelectionSheet = ref<boolean>(false);
 const showColorSelectionSheet = ref<boolean>(false);
 
-function getPrimaryCategoryName(parentId: string): string | null {
-    return TransactionCategory.findNameById(allAvailableCategories.value, parentId);
+const parentCategoryId = computed<string>({
+    get: () => category.value.parentId === '0' ? '' : category.value.parentId,
+    set: (value) => { category.value.parentId = value || '0'; }
+});
+
+function getPrimaryCategoryName(id: string): string | null {
+    if (!id) return null;
+    const cat = transactionCategoriesStore.allTransactionCategoriesMap[id];
+    return cat ? cat.name : null;
 }
 
 function init(): void {

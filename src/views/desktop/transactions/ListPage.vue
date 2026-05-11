@@ -1115,8 +1115,8 @@ const currentMonthTotalAmount = computed<TransactionListDisplayTotalAmount | nul
         }
 
         return {
-            income: getDisplayMonthTotalAmount(transactionData.totalAmount.income, defaultCurrency.value, '', transactionData.totalAmount.incompleteIncome),
-            expense: getDisplayMonthTotalAmount(transactionData.totalAmount.expense, defaultCurrency.value, '', transactionData.totalAmount.incompleteExpense)
+            income: getDisplayMonthTotalAmount(transactionData.totalAmount.income, defaultCurrency.value, '+', transactionData.totalAmount.incompleteIncome),
+            expense: getDisplayMonthTotalAmount(transactionData.totalAmount.expense, defaultCurrency.value, '-', transactionData.totalAmount.incompleteExpense)
         };
     } else {
         return null;

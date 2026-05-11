@@ -20,28 +20,15 @@
                 <f7-list-item :title="filterNoItemsText"></f7-list-item>
             </f7-list>
             <f7-treeview class="tree-view-selection-treeview">
-                <f7-treeview-item item-toggle
-                                  :opened="isPrimaryItemHasSecondaryValue(item)"
-                                  :label="ti((primaryTitleField ? item[primaryTitleField] : item) as string, !!primaryTitleI18n)"
-                                  :key="primaryKeyField ? item[primaryKeyField] : item"
-                                  v-for="item in filteredItems">
-                    <template #media>
-                        <ItemIcon :icon-type="primaryIconType" :icon-id="item[primaryIconField]"
-                                  :color="primaryColorField ? item[primaryColorField] : undefined" v-if="primaryIconField"></ItemIcon>
-                    </template>
-
-                    <f7-treeview-item selectable
-                                      :selected="isSecondaryValueSelected(currentValue, subItem)"
-                                      :label="ti((secondaryTitleField ? (subItem as Record<string, unknown>)[secondaryTitleField] : subItem) as string, !!secondaryTitleI18n)"
-                                      :key="secondaryKeyField ? (subItem as Record<string, unknown>)[secondaryKeyField] : subItem"
-                                      v-for="subItem in getFilteredSubItems(item)"
-                                      @click="onSecondaryItemClicked(subItem)">
-                        <template #media>
-                            <ItemIcon :icon-type="secondaryIconType" :icon-id="(subItem as Record<string, unknown>)[secondaryIconField]"
-                                      :color="secondaryColorField ? (subItem as Record<string, unknown>)[secondaryColorField] : undefined" v-if="secondaryIconField"></ItemIcon>
-                        </template>
-                    </f7-treeview-item>
-                </f7-treeview-item>
+                <template v-for="item in filteredItems">
+                    <tree-view-node
+                        :node="item"
+                        :selected-id="currentValue"
+                        :filter-text="filterContent"
+                        :depth="0"
+                        @select="onNodeClicked">
+                    </tree-view-node>
+                </template>
             </f7-treeview>
         </f7-page-content>
     </f7-sheet>
@@ -52,73 +39,77 @@ import { ref, computed, useTemplateRef } from 'vue';
 import type { Sheet, Searchbar } from 'framework7/types';
 
 import { useI18n } from '@/locales/helpers.ts';
-import { type TwoLevelItemSelectionBaseProps, useTwoLevelItemSelectionBase } from '@/components/base/TwoLevelItemSelectionBase.ts';
+import TreeViewNode from './TreeViewNode.vue';
 
 import { scrollToSelectedItem } from '@/lib/ui/common.ts';
 import { type Framework7Dom, scrollSheetToTop } from '@/lib/ui/mobile.ts';
 
-interface MobileTwoLevelItemSelectionBaseProps extends TwoLevelItemSelectionBaseProps {
+interface TreeViewSelectionSheetProps {
     show: boolean;
+    enableFilter?: boolean;
+    filterPlaceholder?: string;
+    filterNoItemsText?: string;
+    items: Record<string, unknown>[];
+    modelValue: string;
 }
 
-const props = defineProps<MobileTwoLevelItemSelectionBaseProps>();
+const props = defineProps<TreeViewSelectionSheetProps>();
 
 const emit = defineEmits<{
-    (e: 'update:modelValue', value: unknown): void;
+    (e: 'update:modelValue', value: string): void;
     (e: 'update:show', value: boolean): void;
 }>();
 
 const { ti } = useI18n();
 
-const {
-    filterContent,
-    visibleItemsCount,
-    filteredItems,
-    getFilteredSubItems,
-    isSecondaryValueSelected,
-    updateCurrentSecondaryValue
-} = useTwoLevelItemSelectionBase(props);
+const filterContent = ref<string>('');
 
 const sheet = useTemplateRef<Sheet.Sheet>('sheet');
 const searchbar = useTemplateRef<Searchbar.Searchbar>('searchbar');
 
-const currentValue = ref<unknown>(props.modelValue);
+const currentValue = ref<string>(props.modelValue);
 
 const heightClass = computed<string>(() => {
-    if (visibleItemsCount.value > 6) {
+    const count = visibleItemsCount.value;
+
+    if (count > 6) {
         return 'tree-view-selection-huge-sheet';
-    } else if (visibleItemsCount.value > 2) {
+    } else if (count > 2) {
         return 'tree-view-selection-large-sheet';
     } else {
         return 'tree-view-selection-default-sheet';
     }
 });
 
-function isPrimaryItemHasSecondaryValue(primaryItem: Record<string, unknown>): boolean {
-    const subItems = primaryItem[props.primarySubItemsField] as unknown[];
+const visibleItemsCount = computed<number>(() => {
+    let count = 0;
 
-    if (subItems.length < 1) {
-        return false;
+    function countVisible(items: Record<string, unknown>[]): void {
+        for (const item of items) {
+            if (item['hidden']) {
+                continue;
+            }
+            count++;
+        }
     }
 
-    const lowerCaseFilterContent = filterContent.value?.toLowerCase() ?? '';
+    countVisible(props.items);
+    return count;
+});
 
-    for (const secondaryItem of subItems) {
-        if (props.secondaryHiddenField && (secondaryItem as Record<string, unknown>)[props.secondaryHiddenField]) {
-            continue;
-        }
+function matchesFilterRecursive(item: Record<string, unknown>, lowerFilter: string): boolean {
+    if (!lowerFilter) {
+        return true;
+    }
 
-        if (props.primaryTitleField && lowerCaseFilterContent) {
-            const title = ti((secondaryItem as Record<string, unknown>)[props.primaryTitleField] as string, !!props.primaryTitleI18n);
+    const name = ti(item['name'] as string, false).toLowerCase();
+    if (name.includes(lowerFilter)) {
+        return true;
+    }
 
-            if (title.toLowerCase().indexOf(lowerCaseFilterContent) >= 0) {
-                return true;
-            }
-        }
-
-        if (props.secondaryValueField && (secondaryItem as Record<string, unknown>)[props.secondaryValueField] === currentValue.value) {
-            return true;
-        } else if (!props.secondaryValueField && secondaryItem === currentValue.value) {
+    const subItems = (item['children'] || item['subCategories'] || []) as Record<string, unknown>[];
+    for (const sub of subItems) {
+        if (matchesFilterRecursive(sub, lowerFilter)) {
             return true;
         }
     }
@@ -126,19 +117,40 @@ function isPrimaryItemHasSecondaryValue(primaryItem: Record<string, unknown>): b
     return false;
 }
 
-function onSecondaryItemClicked(subItem: unknown): void {
-    updateCurrentSecondaryValue(currentValue, subItem);
-    emit('update:modelValue', currentValue.value);
+const filteredItems = computed<Record<string, unknown>[]>(() => {
+    if (!filterContent.value) {
+        return props.items;
+    }
+
+    const lowerFilter = filterContent.value.toLowerCase();
+    const result: Record<string, unknown>[] = [];
+
+    for (const item of props.items) {
+        if (item['hidden']) {
+            continue;
+        }
+
+        if (matchesFilterRecursive(item, lowerFilter)) {
+            result.push(item);
+        }
+    }
+
+    return result;
+});
+
+function onNodeClicked(id: string): void {
+    currentValue.value = id;
+    emit('update:modelValue', id);
     emit('update:show', false);
 }
 
 function onSearchBarFocus(): void {
-    scrollSheetToTop(sheet.value?.$el as HTMLElement, window.innerHeight); // $el is not Framework7 Dom
+    scrollSheetToTop(sheet.value?.$el as HTMLElement, window.innerHeight);
 }
 
 function onSheetOpen(event: { $el: Framework7Dom }): void {
     currentValue.value = props.modelValue;
-    scrollToSelectedItem(event.$el[0], '.sheet-modal-inner', '.page-content', '.treeview-item > .treeview-item-selected');
+    scrollToSelectedItem(event.$el[0], '.sheet-modal-inner', '.page-content', '.treeview-item-selected');
 }
 
 function onSheetClosed(): void {

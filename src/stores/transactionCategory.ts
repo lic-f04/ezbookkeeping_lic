@@ -33,15 +33,24 @@ export const useTransactionCategoriesStore = defineStore('transactionCategories'
         return count;
     });
 
+    function countNonRootCategories(categories: TransactionCategory[]): number {
+        let count = 0;
+
+        for (const category of categories) {
+            if (category.subCategories && category.subCategories.length > 0) {
+                count += category.subCategories.length;
+                count += countNonRootCategories(category.subCategories);
+            }
+        }
+
+        return count;
+    }
+
     const allAvailableSecondaryCategoriesCount = computed<number>(() => {
         let count = 0;
 
         for (const categories of values(allTransactionCategories.value)) {
-            for (const category of categories) {
-                if (category.subCategories) {
-                    count += category.subCategories.length;
-                }
-            }
+            count += countNonRootCategories(categories);
         }
 
         return count;
@@ -74,21 +83,23 @@ export const useTransactionCategoriesStore = defineStore('transactionCategories'
         return firstVisibleCategoryId !== '';
     });
 
+    function buildCategoryTreeMap(category: TransactionCategory, map: Record<string, TransactionCategory>): void {
+        map[category.id] = category;
+
+        if (category.subCategories) {
+            for (const subCategory of category.subCategories) {
+                buildCategoryTreeMap(subCategory, map);
+            }
+        }
+    }
+
     function loadTransactionCategoryList(allCategories: Record<number, TransactionCategory[]>): void {
         allTransactionCategories.value = allCategories;
         allTransactionCategoriesMap.value = {};
 
         for (const categories of values(allCategories)) {
             for (const category of categories) {
-                allTransactionCategoriesMap.value[category.id] = category;
-
-                if (!category.subCategories) {
-                    continue;
-                }
-
-                for (const subCategory of category.subCategories) {
-                    allTransactionCategoriesMap.value[subCategory.id] = subCategory;
-                }
+                buildCategoryTreeMap(category, allTransactionCategoriesMap.value);
             }
         }
     }
@@ -99,7 +110,13 @@ export const useTransactionCategoriesStore = defineStore('transactionCategories'
         if (!category.parentId || category.parentId === '0') {
             categoryList = allTransactionCategories.value[category.type];
         } else if (allTransactionCategoriesMap.value[category.parentId]) {
-            categoryList = allTransactionCategoriesMap.value[category.parentId]!.subCategories;
+            const parent = allTransactionCategoriesMap.value[category.parentId]!;
+
+            if (!parent.subCategories) {
+                parent.subCategories = [];
+            }
+
+            categoryList = parent.subCategories;
         }
 
         if (categoryList) {
@@ -139,13 +156,75 @@ export const useTransactionCategoriesStore = defineStore('transactionCategories'
         return true;
     }
 
+    function findCategoryListInTree(categories: TransactionCategory[], id: string): TransactionCategory[] | undefined {
+        for (const category of categories) {
+            if (category.id === id) {
+                return categories;
+            }
+
+            if (category.subCategories) {
+                const found = findCategoryListInTree(category.subCategories, id);
+                if (found) {
+                    return found;
+                }
+            }
+        }
+
+        return undefined;
+    }
+
+    function findAndRemoveFromTree(categories: TransactionCategory[], id: string): boolean {
+        for (let i = 0; i < categories.length; i++) {
+            const cat = categories[i] as TransactionCategory;
+
+            if (cat.id === id) {
+                categories.splice(i, 1);
+                return true;
+            }
+
+            if (cat.subCategories) {
+                if (findAndRemoveFromTree(cat.subCategories, id)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    function removeFromCategoryMapRecursive(map: Record<string, TransactionCategory>, category: TransactionCategory): void {
+        if (map[category.id]) {
+            if (category.subCategories) {
+                for (const sub of category.subCategories) {
+                    removeFromCategoryMapRecursive(map, sub);
+                }
+            }
+
+            delete map[category.id];
+        }
+    }
+
     function updateCategoryDisplayOrderInCategoryList({ category, from, to }: { category: TransactionCategory, from: number, to: number }): void {
         let categoryList: TransactionCategory[] | undefined = undefined;
 
         if (!category.parentId || category.parentId === '0') {
             categoryList = allTransactionCategories.value[category.type];
         } else if (allTransactionCategoriesMap.value[category.parentId]) {
-            categoryList = allTransactionCategoriesMap.value[category.parentId]!.subCategories;
+            const parent = allTransactionCategoriesMap.value[category.parentId]!;
+
+            if (parent.subCategories) {
+                categoryList = parent.subCategories;
+            }
+        }
+
+        if (!categoryList) {
+            for (const categories of values(allTransactionCategories.value)) {
+                const found = findCategoryListInTree(categories, category.id);
+                if (found) {
+                    categoryList = found;
+                    break;
+                }
+            }
         }
 
         if (categoryList) {
@@ -153,45 +232,33 @@ export const useTransactionCategoriesStore = defineStore('transactionCategories'
         }
     }
 
-    function updateCategoryVisibilityInTransactionCategoryList({ category, hidden }: { category: TransactionCategory, hidden: boolean }): void {
-        if (allTransactionCategoriesMap.value[category.id]) {
-            allTransactionCategoriesMap.value[category.id]!.visible = !hidden;
-        }
-    }
-
     function removeCategoryFromTransactionCategoryList(currentCategory: TransactionCategory): void {
-        let categoryList: TransactionCategory[] | undefined = undefined;
+        let removed = false;
 
         if (!currentCategory.parentId || currentCategory.parentId === '0') {
-            categoryList = allTransactionCategories.value[currentCategory.type];
+            const categoryList = allTransactionCategories.value[currentCategory.type];
+
+            if (categoryList) {
+                removed = findAndRemoveFromTree(categoryList, currentCategory.id);
+            }
         } else if (allTransactionCategoriesMap.value[currentCategory.parentId]) {
-            categoryList = allTransactionCategoriesMap.value[currentCategory.parentId]!.subCategories;
+            const parent = allTransactionCategoriesMap.value[currentCategory.parentId]!;
+
+            if (parent.subCategories) {
+                removed = findAndRemoveFromTree(parent.subCategories, currentCategory.id);
+            }
         }
 
-        if (categoryList) {
-            for (const [category, index] of itemAndIndex(categoryList)) {
-                if (category.id === currentCategory.id) {
-                    categoryList.splice(index, 1);
+        if (!removed) {
+            for (const categories of values(allTransactionCategories.value)) {
+                if (findAndRemoveFromTree(categories, currentCategory.id)) {
+                    removed = true;
                     break;
                 }
             }
         }
 
-        if (allTransactionCategoriesMap.value[currentCategory.id] && allTransactionCategoriesMap.value[currentCategory.id]!.subCategories) {
-            const subCategoryList = allTransactionCategoriesMap.value[currentCategory.id]!.subCategories;
-
-            if (subCategoryList) {
-                for (const subCategory of subCategoryList) {
-                    if (allTransactionCategoriesMap.value[subCategory.id]) {
-                        delete allTransactionCategoriesMap.value[subCategory.id];
-                    }
-                }
-            }
-        }
-
-        if (allTransactionCategoriesMap.value[currentCategory.id]) {
-            delete allTransactionCategoriesMap.value[currentCategory.id];
-        }
+        removeFromCategoryMapRecursive(allTransactionCategoriesMap.value, currentCategory);
     }
 
     function updateTransactionCategoryListInvalidState(invalidState: boolean): void {
@@ -417,21 +484,6 @@ export const useTransactionCategoriesStore = defineStore('transactionCategories'
                 return;
             }
 
-            if (!category.parentId || category.parentId === '0') {
-                if (!allTransactionCategories.value[category.type] ||
-                    !allTransactionCategories.value[category.type]![to]) {
-                    reject({ message: 'Unable to move category' });
-                    return;
-                }
-            } else {
-                const subCategoryList = allTransactionCategoriesMap.value[category.parentId]?.subCategories;
-
-                if (!subCategoryList || !subCategoryList[to]) {
-                    reject({ message: 'Unable to move category' });
-                    return;
-                }
-            }
-
             if (!transactionCategoryListStateInvalid.value) {
                 updateTransactionCategoryListInvalidState(true);
             }
@@ -451,6 +503,16 @@ export const useTransactionCategoriesStore = defineStore('transactionCategories'
             categoryList = allTransactionCategories.value[type];
         } else if (allTransactionCategoriesMap.value[parentId]) {
             categoryList = allTransactionCategoriesMap.value[parentId].subCategories;
+        }
+
+        if (!categoryList) {
+            for (const categories of values(allTransactionCategories.value)) {
+                const found = findCategoryListInTree(categories, parentId);
+                if (found) {
+                    categoryList = found;
+                    break;
+                }
+            }
         }
 
         if (categoryList) {
@@ -494,6 +556,18 @@ export const useTransactionCategoriesStore = defineStore('transactionCategories'
         });
     }
 
+    function updateCategoryVisibilityRecursive(category: TransactionCategory, hidden: boolean): void {
+        if (allTransactionCategoriesMap.value[category.id]) {
+            allTransactionCategoriesMap.value[category.id]!.visible = !hidden;
+        }
+
+        if (category.subCategories) {
+            for (const sub of category.subCategories) {
+                updateCategoryVisibilityRecursive(sub, hidden);
+            }
+        }
+    }
+
     function hideCategory({ category, hidden }: { category: TransactionCategory, hidden: boolean }): Promise<boolean> {
         return new Promise((resolve, reject) => {
             services.hideTransactionCategory({
@@ -512,7 +586,7 @@ export const useTransactionCategoriesStore = defineStore('transactionCategories'
                     return;
                 }
 
-                updateCategoryVisibilityInTransactionCategoryList({ category, hidden });
+                updateCategoryVisibilityRecursive(category, hidden);
 
                 resolve(data.result);
             }).catch(error => {

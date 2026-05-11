@@ -63,46 +63,32 @@
                         <v-list rounded density="comfortable" class="pa-0">
                             <div class="ms-5 py-3" v-if="!categories || !categories.length">{{ tt('No available category') }}</div>
 
-                            <template :key="category.id"
-                                      v-for="(category, idx) in categories">
+                            <template v-for="(item, idx) in flattenFilterCategories(categories)" :key="item.category.id">
                                 <v-divider v-if="idx > 0"/>
 
-                                <v-list-item>
+                                <v-list-item :style="{ 'padding-left': (16 + item.depth * 24) + 'px' }">
                                     <template #prepend>
-                                        <v-checkbox :model-value="isSubCategoriesAllChecked(category, filterCategoryIds)"
-                                                    :indeterminate="isSubCategoriesHasButNotAllChecked(category, filterCategoryIds)"
-                                                    @update:model-value="updateAllSubCategoriesSelected(category, $event)">
+                                        <v-checkbox v-if="item.hasChildren"
+                                                    :model-value="isSubCategoriesAllChecked(item.category, filterCategoryIds)"
+                                                    :indeterminate="isSubCategoriesHasButNotAllChecked(item.category, filterCategoryIds)"
+                                                    @update:model-value="updateAllSubCategoriesSelected(item.category, $event)">
                                             <template #label>
-                                                <ItemIcon class="d-flex" icon-type="category" :icon-id="category.icon"
-                                                          :color="category.color" :hidden-status="category.hidden"></ItemIcon>
-                                                <span class="ms-3">{{ category.name }}</span>
+                                                <ItemIcon class="d-flex" icon-type="category" :icon-id="item.category.icon"
+                                                          :color="item.category.color" :hidden-status="item.category.hidden"></ItemIcon>
+                                                <span class="ms-3">{{ item.category.name }}</span>
+                                            </template>
+                                        </v-checkbox>
+                                        <v-checkbox v-else
+                                                    :model-value="isCategoryChecked(item.category, filterCategoryIds)"
+                                                    @update:model-value="updateCategorySelected(item.category, $event)">
+                                            <template #label>
+                                                <ItemIcon class="d-flex" icon-type="category" :icon-id="item.category.icon"
+                                                          :color="item.category.color" :hidden-status="item.category.hidden"></ItemIcon>
+                                                <span class="ms-3">{{ item.category.name }}</span>
                                             </template>
                                         </v-checkbox>
                                     </template>
                                 </v-list-item>
-
-                                <v-divider v-if="category.subCategories && category.subCategories.length"/>
-
-                                <v-list rounded density="comfortable" class="pa-0 ms-4"
-                                        v-if="category.subCategories && category.subCategories.length">
-                                    <template :key="subCategory.id"
-                                              v-for="(subCategory, subIdx) in category.subCategories">
-                                        <v-divider v-if="subIdx > 0"/>
-
-                                        <v-list-item>
-                                            <template #prepend>
-                                                <v-checkbox :model-value="isCategoryChecked(subCategory, filterCategoryIds)"
-                                                            @update:model-value="updateCategorySelected(subCategory, $event)">
-                                                    <template #label>
-                                                        <ItemIcon class="d-flex" icon-type="category" :icon-id="subCategory.icon"
-                                                                  :color="subCategory.color" :hidden-status="subCategory.hidden"></ItemIcon>
-                                                        <span class="ms-3">{{ subCategory.name }}</span>
-                                                    </template>
-                                                </v-checkbox>
-                                            </template>
-                                        </v-list-item>
-                                    </template>
-                                </v-list>
                             </template>
                         </v-list>
                     </v-expansion-panel-text>
@@ -235,6 +221,24 @@ function updateAllSubCategoriesSelected(category: TransactionCategory, value: bo
     if (props.autoSave) {
         save();
     }
+}
+
+function flattenFilterCategories(categories: TransactionCategory[]): { category: TransactionCategory; depth: number; hasChildren: boolean }[] {
+    const result: { category: TransactionCategory; depth: number; hasChildren: boolean }[] = [];
+
+    function walk(nodes: TransactionCategory[], depth: number): void {
+        for (const category of nodes) {
+            const hasChildren = !!(category.subCategories && category.subCategories.length > 0);
+            result.push({ category, depth, hasChildren });
+
+            if (hasChildren) {
+                walk(category.subCategories!, depth + 1);
+            }
+        }
+    }
+
+    walk(categories, 0);
+    return result;
 }
 
 function selectAllCategories(): void {

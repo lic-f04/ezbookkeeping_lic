@@ -261,7 +261,8 @@ func TestGetCategoryOrSubCategoryIdsByCategoryName_ParentCategoryWithoutChildren
 	actualIds := TransactionCategories.GetCategoryOrSubCategoryIdsByCategoryName(categories, "Category Name")
 
 	assert.NotNil(t, actualIds)
-	assert.Equal(t, 0, len(actualIds))
+	assert.Equal(t, 1, len(actualIds))
+	assert.Contains(t, actualIds, int64(1001))
 }
 
 func TestGetCategoryOrSubCategoryIdsByCategoryName_BothParentAndSubCategory(t *testing.T) {

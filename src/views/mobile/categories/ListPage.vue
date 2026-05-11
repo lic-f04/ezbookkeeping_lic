@@ -15,7 +15,7 @@
 
         <f7-list strong inset dividers class="margin-top skeleton-text" v-if="loading">
             <f7-list-item title="Category Name"
-                          :link="hasSubCategories ? '#' : null"
+                          link="#"
                           :key="itemIdx" v-for="itemIdx in [ 1, 2, 3 ]">
                 <template #media>
                     <f7-icon f7="app_fill"></f7-icon>
@@ -25,7 +25,7 @@
 
         <f7-list strong inset dividers class="margin-top" v-if="!loading && noAvailableCategory">
             <f7-list-item :title="tt('No available category')"></f7-list-item>
-            <f7-list-button v-if="hasSubCategories && noCategory"
+                            <f7-list-button v-if="isRootLevel && noCategory"
                             :title="tt('Add Default Categories')"
                             :href="'/category/preset?type=' + categoryType"></f7-list-button>
         </f7-list>
@@ -39,7 +39,7 @@
                           :id="getCategoryDomId(category)"
                           :title="category.name"
                           :footer="category.comment"
-                          :link="hasSubCategories ? '/category/list?type=' + categoryType + '&id=' + category.id : null"
+                          :link="hasCategorySubCategories(category) ? '/category/list?type=' + categoryType + '&id=' + category.id : null"
                           :key="category.id"
                           v-for="category in categories"
                           v-show="showHidden || !category.hidden"
@@ -124,7 +124,7 @@ const { loading, primaryCategoryId, currentPrimaryCategory } = useCategoryListPa
 
 const transactionCategoriesStore = useTransactionCategoriesStore();
 
-const hasSubCategories = ref<boolean>(false);
+const isRootLevel = ref<boolean>(true);
 const categoryType = ref<CategoryType | 0>(0);
 const loadingError = ref<unknown | null>(null);
 const showHidden = ref<boolean>(false);
@@ -156,39 +156,26 @@ const categories = computed<TransactionCategory[]>(() => {
 });
 
 const title = computed<string>(() => {
-    let title = '';
-
     switch (categoryType.value) {
         case CategoryType.Income:
-            title = 'Income';
-            break;
+            return 'Income Categories';
         case CategoryType.Expense:
-            title = 'Expense';
-            break;
+            return 'Expense Categories';
         case CategoryType.Transfer:
-            title = 'Transfer';
-            break;
+            return 'Transfer Categories';
         default:
-            title = 'Transaction';
-            break;
+            return 'Transaction Categories';
     }
-
-    switch (hasSubCategories.value) {
-        case true:
-            title += ' Primary';
-            break;
-        case false:
-            title += ' Secondary';
-            break;
-    }
-
-    return title + ' Categories';
 });
 
 const firstShowingId = computed<string | null>(() => getFirstShowingId(categories.value, showHidden.value));
 const lastShowingId = computed<string | null>(() => getLastShowingId(categories.value, showHidden.value));
 const noAvailableCategory = computed<boolean>(() => isNoAvailableCategory(categories.value, showHidden.value));
 const noCategory = computed<boolean>(() => categories.value.length < 1);
+
+function hasCategorySubCategories(category: TransactionCategory): boolean {
+    return !!(category.subCategories && category.subCategories.length > 0);
+}
 
 function getCategoryDomId(category: TransactionCategory): string {
     return 'category_' + category.id;
@@ -217,10 +204,10 @@ function init(): void {
 
     if (query['id'] && query['id'] !== '0') {
         primaryCategoryId.value = query['id'];
-        hasSubCategories.value = false;
+        isRootLevel.value = false;
     } else {
         primaryCategoryId.value = '0';
-        hasSubCategories.value = true;
+        isRootLevel.value = true;
     }
 
     loading.value = true;

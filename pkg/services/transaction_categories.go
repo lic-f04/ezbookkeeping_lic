@@ -222,54 +222,47 @@ func (s *TransactionCategoryService) CreateCategory(c core.Context, category *mo
 }
 
 // CreateCategories saves a few transaction category models to database
-func (s *TransactionCategoryService) CreateCategories(c core.Context, uid int64, categories map[*models.TransactionCategory][]*models.TransactionCategory) ([]*models.TransactionCategory, error) {
+func (s *TransactionCategoryService) CreateCategories(c core.Context, uid int64, categories []*models.TransactionCategory) ([]*models.TransactionCategory, error) {
 	if uid <= 0 {
 		return nil, errs.ErrUserIdInvalid
 	}
 
-	var allCategories []*models.TransactionCategory
-	primaryCategories := categories[nil]
+	if len(categories) <= 0 {
+		return categories, nil
+	}
 
-	needPrimaryCategoryUuidCount := uint16(len(primaryCategories))
-	primaryCategoryUuids := s.GenerateUuids(uuid.UUID_TYPE_CATEGORY, needPrimaryCategoryUuidCount)
+	needUuidCount := uint16(len(categories))
+	uuids := s.GenerateUuids(uuid.UUID_TYPE_CATEGORY, needUuidCount)
 
-	if len(primaryCategoryUuids) < int(needPrimaryCategoryUuidCount) {
+	if len(uuids) < int(needUuidCount) {
 		return nil, errs.ErrSystemIsBusy
 	}
 
-	for i := 0; i < len(primaryCategories); i++ {
-		primaryCategory := primaryCategories[i]
-		primaryCategory.CategoryId = primaryCategoryUuids[i]
-		primaryCategory.Deleted = false
-		primaryCategory.CreatedUnixTime = time.Now().Unix()
-		primaryCategory.UpdatedUnixTime = time.Now().Unix()
+	placeholderToRealUuid := make(map[int64]int64, len(categories))
 
-		allCategories = append(allCategories, primaryCategory)
+	for i, category := range categories {
+		placeholderToRealUuid[category.CategoryId] = uuids[i]
+		category.CategoryId = uuids[i]
+	}
 
-		secondaryCategories := categories[primaryCategory]
-
-		needSecondaryCategoryUuidCount := uint16(len(secondaryCategories))
-		secondaryCategoryUuids := s.GenerateUuids(uuid.UUID_TYPE_CATEGORY, needSecondaryCategoryUuidCount)
-
-		if len(secondaryCategoryUuids) < int(needSecondaryCategoryUuidCount) {
-			return nil, errs.ErrSystemIsBusy
-		}
-
-		for j := 0; j < len(secondaryCategories); j++ {
-			secondaryCategory := secondaryCategories[j]
-			secondaryCategory.CategoryId = secondaryCategoryUuids[j]
-			secondaryCategory.ParentCategoryId = primaryCategory.CategoryId
-			secondaryCategory.Deleted = false
-			secondaryCategory.CreatedUnixTime = time.Now().Unix()
-			secondaryCategory.UpdatedUnixTime = time.Now().Unix()
-
-			allCategories = append(allCategories, secondaryCategory)
+	for _, category := range categories {
+		if category.ParentCategoryId < 0 {
+			if realParentId, ok := placeholderToRealUuid[category.ParentCategoryId]; ok {
+				category.ParentCategoryId = realParentId
+			}
 		}
 	}
 
+	now := time.Now().Unix()
+
+	for _, category := range categories {
+		category.Deleted = false
+		category.CreatedUnixTime = now
+		category.UpdatedUnixTime = now
+	}
+
 	err := s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
-		for i := 0; i < len(allCategories); i++ {
-			category := allCategories[i]
+		for _, category := range categories {
 			_, err := sess.Insert(category)
 
 			if err != nil {
@@ -284,7 +277,7 @@ func (s *TransactionCategoryService) CreateCategories(c core.Context, uid int64,
 		return nil, err
 	}
 
-	return allCategories, nil
+	return categories, nil
 }
 
 // ModifyCategory saves an existed transaction category model to database
@@ -360,7 +353,7 @@ func (s *TransactionCategoryService) ModifyCategoryDisplayOrders(c core.Context,
 	})
 }
 
-// DeleteCategory deletes an existed transaction category from database
+// DeleteCategory deletes an existed transaction category and all its descendants from database
 func (s *TransactionCategoryService) DeleteCategory(c core.Context, uid int64, categoryId int64) error {
 	if uid <= 0 {
 		return errs.ErrUserIdInvalid
@@ -374,22 +367,29 @@ func (s *TransactionCategoryService) DeleteCategory(c core.Context, uid int64, c
 	}
 
 	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
-		var categoryAndSubCategories []*models.TransactionCategory
-		err := sess.Where("uid=? AND deleted=? AND (category_id=? OR parent_category_id=?)", uid, false, categoryId, categoryId).Find(&categoryAndSubCategories)
+		var categoryAndDescendants []*models.TransactionCategory
+		err := sess.Where("uid=? AND deleted=?", uid, false).Find(&categoryAndDescendants)
 
 		if err != nil {
 			return err
-		} else if len(categoryAndSubCategories) < 1 {
+		}
+
+		categoryMap := make(map[int64]*models.TransactionCategory)
+		for i := 0; i < len(categoryAndDescendants); i++ {
+			categoryMap[categoryAndDescendants[i].CategoryId] = categoryAndDescendants[i]
+		}
+
+		if _, exists := categoryMap[categoryId]; !exists {
 			return errs.ErrTransactionCategoryNotFound
 		}
 
-		categoryAndSubCategoryIds := make([]int64, len(categoryAndSubCategories))
+		allIds := s.collectDescendantIds(categoryId, categoryMap)
 
-		for i := 0; i < len(categoryAndSubCategories); i++ {
-			categoryAndSubCategoryIds[i] = categoryAndSubCategories[i].CategoryId
+		if len(allIds) < 1 {
+			return errs.ErrTransactionCategoryNotFound
 		}
 
-		exists, err := sess.Cols("uid", "deleted", "category_id").Where("uid=? AND deleted=?", uid, false).In("category_id", categoryAndSubCategoryIds).Limit(1).Exist(&models.Transaction{})
+		exists, err := sess.Cols("uid", "deleted", "category_id").Where("uid=? AND deleted=?", uid, false).In("category_id", allIds).Limit(1).Exist(&models.Transaction{})
 
 		if err != nil {
 			return err
@@ -397,7 +397,7 @@ func (s *TransactionCategoryService) DeleteCategory(c core.Context, uid int64, c
 			return errs.ErrTransactionCategoryInUseCannotBeDeleted
 		}
 
-		exists, err = sess.Cols("uid", "deleted", "category_id", "template_type", "scheduled_frequency_type", "scheduled_end_time").Where("uid=? AND deleted=? AND (template_type=? OR (template_type=? AND scheduled_frequency_type<>? AND (scheduled_end_time IS NULL OR scheduled_end_time>=?)))", uid, false, models.TRANSACTION_TEMPLATE_TYPE_NORMAL, models.TRANSACTION_TEMPLATE_TYPE_SCHEDULE, models.TRANSACTION_SCHEDULE_FREQUENCY_TYPE_DISABLED, now).In("category_id", categoryAndSubCategoryIds).Limit(1).Exist(&models.TransactionTemplate{})
+		exists, err = sess.Cols("uid", "deleted", "category_id", "template_type", "scheduled_frequency_type", "scheduled_end_time").Where("uid=? AND deleted=? AND (template_type=? OR (template_type=? AND scheduled_frequency_type<>? AND (scheduled_end_time IS NULL OR scheduled_end_time>=?)))", uid, false, models.TRANSACTION_TEMPLATE_TYPE_NORMAL, models.TRANSACTION_TEMPLATE_TYPE_SCHEDULE, models.TRANSACTION_SCHEDULE_FREQUENCY_TYPE_DISABLED, now).In("category_id", allIds).Limit(1).Exist(&models.TransactionTemplate{})
 
 		if err != nil {
 			return err
@@ -405,7 +405,7 @@ func (s *TransactionCategoryService) DeleteCategory(c core.Context, uid int64, c
 			return errs.ErrTransactionCategoryInUseCannotBeDeleted
 		}
 
-		deletedRows, err := sess.Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=?", uid, false).In("category_id", categoryAndSubCategoryIds).Update(updateModel)
+		deletedRows, err := sess.Cols("deleted", "deleted_unix_time").Where("uid=? AND deleted=?", uid, false).In("category_id", allIds).Update(updateModel)
 
 		if err != nil {
 			return err
@@ -415,6 +415,20 @@ func (s *TransactionCategoryService) DeleteCategory(c core.Context, uid int64, c
 
 		return err
 	})
+}
+
+// collectDescendantIds returns the category id and all its descendant ids recursively
+func (s *TransactionCategoryService) collectDescendantIds(categoryId int64, categoryMap map[int64]*models.TransactionCategory) []int64 {
+	allIds := []int64{categoryId}
+
+	for _, category := range categoryMap {
+		if category.ParentCategoryId == categoryId {
+			childIds := s.collectDescendantIds(category.CategoryId, categoryMap)
+			allIds = append(allIds, childIds...)
+		}
+	}
+
+	return allIds
 }
 
 // DeleteAllCategories deletes all existed transaction categories from database
@@ -534,7 +548,7 @@ func (s *TransactionCategoryService) GetCategoryNames(categories []*models.Trans
 	return categoryNames
 }
 
-// GetCategoryOrSubCategoryIds returns all category ids and sub-category ids according to given category ids
+// GetCategoryOrSubCategoryIds returns all category ids and descendant ids according to given category ids
 func (s *TransactionCategoryService) GetCategoryOrSubCategoryIds(c core.Context, categoryIds string, uid int64) ([]int64, error) {
 	if categoryIds == "" || categoryIds == "0" {
 		return nil, nil
@@ -546,61 +560,60 @@ func (s *TransactionCategoryService) GetCategoryOrSubCategoryIds(c core.Context,
 		return nil, errs.Or(err, errs.ErrTransactionCategoryIdInvalid)
 	}
 
-	var allCategoryIds []int64
-
-	if len(requestCategoryIds) > 0 {
-		allSubCategories, err := s.GetSubCategoriesByCategoryIds(c, uid, requestCategoryIds)
-
-		if err != nil {
-			return nil, err
-		}
-
-		categoryIdsMap := make(map[int64]int32, len(requestCategoryIds))
-
-		for i := 0; i < len(requestCategoryIds); i++ {
-			categoryIdsMap[requestCategoryIds[i]] = 0
-		}
-
-		for i := 0; i < len(allSubCategories); i++ {
-			subCategory := allSubCategories[i]
-
-			if refCount, exists := categoryIdsMap[subCategory.ParentCategoryId]; exists {
-				categoryIdsMap[subCategory.ParentCategoryId] = refCount + 1
-			} else {
-				categoryIdsMap[subCategory.ParentCategoryId] = 1
-			}
-
-			delete(categoryIdsMap, subCategory.CategoryId)
-
-			allCategoryIds = append(allCategoryIds, subCategory.CategoryId)
-		}
-
-		for accountId, refCount := range categoryIdsMap {
-			if refCount < 1 {
-				allCategoryIds = append(allCategoryIds, accountId)
-			}
-		}
+	if len(requestCategoryIds) == 0 {
+		return nil, nil
 	}
 
-	return allCategoryIds, nil
+	allDescendantIds, err := s.GetAllDescendantCategoryIds(c, uid, requestCategoryIds)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return append(requestCategoryIds, allDescendantIds...), nil
 }
 
-// GetCategoryOrSubCategoryIdsByCategoryName returns a list of transaction category ids or sub-category ids according to given category name
+// GetAllDescendantCategoryIds returns all descendant category ids recursively for given category ids
+func (s *TransactionCategoryService) GetAllDescendantCategoryIds(c core.Context, uid int64, parentIds []int64) ([]int64, error) {
+	if len(parentIds) == 0 {
+		return nil, nil
+	}
+
+	directChildren, err := s.GetSubCategoriesByCategoryIds(c, uid, parentIds)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(directChildren) == 0 {
+		return nil, nil
+	}
+
+	childIds := make([]int64, len(directChildren))
+
+	for i, child := range directChildren {
+		childIds[i] = child.CategoryId
+	}
+
+	grandChildren, err := s.GetAllDescendantCategoryIds(c, uid, childIds)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return append(childIds, grandChildren...), nil
+}
+
+// GetCategoryOrSubCategoryIdsByCategoryName returns a list of transaction category ids or descendant ids according to given category name
 func (s *TransactionCategoryService) GetCategoryOrSubCategoryIdsByCategoryName(categories []*models.TransactionCategory, categoryName string) []int64 {
-	categoryIds := make([]int64, 0)
-	parentCategoryIds := make([]int64, 0)
+	categoryMap := make(map[int64]*models.TransactionCategory)
 	childCategoryByParentCategoryId := make(map[int64][]*models.TransactionCategory)
 
 	for i := 0; i < len(categories); i++ {
 		category := categories[i]
+		categoryMap[category.CategoryId] = category
 
-		if category.Name == categoryName {
-			if category.ParentCategoryId != models.LevelOneTransactionCategoryParentId {
-				categoryIds = append(categoryIds, category.CategoryId)
-			} else if category.ParentCategoryId == models.LevelOneTransactionCategoryParentId {
-				parentCategoryIds = append(parentCategoryIds, category.CategoryId)
-			}
-		} else if category.ParentCategoryId != models.LevelOneTransactionCategoryParentId {
+		if category.ParentCategoryId > 0 {
 			childCategories, exists := childCategoryByParentCategoryId[category.ParentCategoryId]
 
 			if !exists {
@@ -612,13 +625,27 @@ func (s *TransactionCategoryService) GetCategoryOrSubCategoryIdsByCategoryName(c
 		}
 	}
 
-	for i := 0; i < len(parentCategoryIds); i++ {
-		parentCategoryId := parentCategoryIds[i]
+	categoryIds := make([]int64, 0)
+	visited := make(map[int64]bool)
 
-		if childCategories, exists := childCategoryByParentCategoryId[parentCategoryId]; exists {
-			for j := 0; j < len(childCategories); j++ {
-				childCategory := childCategories[j]
-				categoryIds = append(categoryIds, childCategory.CategoryId)
+	for i := 0; i < len(categories); i++ {
+		category := categories[i]
+
+		if category.Name == categoryName {
+			children, hasChildren := childCategoryByParentCategoryId[category.CategoryId]
+
+			if hasChildren && len(children) > 0 {
+				for _, child := range children {
+					if !visited[child.CategoryId] {
+						categoryIds = append(categoryIds, child.CategoryId)
+						visited[child.CategoryId] = true
+					}
+				}
+			} else {
+				if !visited[category.CategoryId] {
+					categoryIds = append(categoryIds, category.CategoryId)
+					visited[category.CategoryId] = true
+				}
 			}
 		}
 	}

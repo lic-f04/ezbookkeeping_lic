@@ -56,19 +56,21 @@ export function useCategoryFilterSettingPageBase(type?: CategoryFilterType, allo
     });
 
     const allVisibleTransactionCategories = computed<Record<string, TransactionCategory[]>>(() => filterTransactionCategories(transactionCategoriesStore.allTransactionCategories, allowCategoryTypes, filterContent.value, showHidden.value));
+    function buildCategoryMapRecursive(categories: TransactionCategory[], map: Record<string, TransactionCategory>): void {
+        for (const category of categories) {
+            map[category.id] = category;
+
+            if (category.subCategories) {
+                buildCategoryMapRecursive(category.subCategories, map);
+            }
+        }
+    }
+
     const allVisibleTransactionCategoryMap = computed<Record<string, TransactionCategory>>(() => {
         const categoryMap: Record<string, TransactionCategory> = {};
 
         for (const categories of values(allVisibleTransactionCategories.value)) {
-            for (const category of categories) {
-                categoryMap[category.id] = category;
-
-                if (category.subCategories) {
-                    for (const subCategory of category.subCategories) {
-                        categoryMap[subCategory.id] = subCategory;
-                    }
-                }
-            }
+            buildCategoryMapRecursive(categories, categoryMap);
         }
 
         return categoryMap;

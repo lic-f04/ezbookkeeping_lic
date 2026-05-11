@@ -412,7 +412,8 @@ func (a *AuthorizationsApi) OAuth2CallbackAuthorizeHandler(c *core.WebContext) (
 
 	oldTokenClaims := c.GetTokenClaims()
 
-	if oldTokenClaims.Type == core.USER_TOKEN_TYPE_OAUTH2_CALLBACK_REQUIRE_VERIFY {
+	switch oldTokenClaims.Type {
+	case core.USER_TOKEN_TYPE_OAUTH2_CALLBACK_REQUIRE_VERIFY:
 		if credential.Password == "" {
 			return nil, errs.ErrPasswordIsEmpty
 		}
@@ -471,14 +472,14 @@ func (a *AuthorizationsApi) OAuth2CallbackAuthorizeHandler(c *core.WebContext) (
 		}
 
 		log.Infof(c, "[authorizations.OAuth2CallbackAuthorizeHandler] user external auth has been created for user \"uid:%d\"", user.Uid)
-	} else if oldTokenClaims.Type == core.USER_TOKEN_TYPE_OAUTH2_CALLBACK {
+	case core.USER_TOKEN_TYPE_OAUTH2_CALLBACK:
 		_, err = a.userExternalAuths.GetUserExternalAuthByUid(c, uid, tokenContext.ExternalAuthType)
 
 		if err != nil {
 			log.Errorf(c, "[authorizations.OAuth2CallbackAuthorizeHandler] failed to get user external auth for user \"uid:%d\", because %s", uid, err.Error())
 			return nil, errs.Or(err, errs.ErrUserExternalAuthNotFound)
 		}
-	} else {
+	default:
 		return nil, errs.ErrSystemError
 	}
 

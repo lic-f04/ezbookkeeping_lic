@@ -94,6 +94,8 @@ import FiscalYearStartSelect from '@/components/desktop/FiscalYearStartSelect.vu
 import ColorSelect from '@/components/desktop/ColorSelect.vue';
 import IconSelect from '@/components/desktop/IconSelect.vue';
 import TwoColumnSelect from '@/components/desktop/TwoColumnSelect.vue';
+import TreeCategorySelect from '@/components/desktop/TreeCategorySelect.vue';
+import TreeNodeItem from '@/components/desktop/TreeNodeItem.vue';
 import TransactionTagAutoComplete from '@/components/desktop/TransactionTagAutoComplete.vue';
 import ScheduleFrequencySelect from '@/components/desktop/ScheduleFrequencySelect.vue';
 import StepsBar from '@/components/desktop/StepsBar.vue';
@@ -542,6 +544,8 @@ app.component('FiscalYearStartSelect', FiscalYearStartSelect);
 app.component('ColorSelect', ColorSelect);
 app.component('IconSelect', IconSelect);
 app.component('TwoColumnSelect', TwoColumnSelect);
+app.component('TreeCategorySelect', TreeCategorySelect);
+app.component('TreeNodeItem', TreeNodeItem);
 app.component('TransactionTagAutoComplete', TransactionTagAutoComplete);
 app.component('ScheduleFrequencySelect', ScheduleFrequencySelect);
 app.component('StepsBar', StepsBar);

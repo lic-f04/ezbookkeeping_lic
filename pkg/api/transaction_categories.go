@@ -111,11 +111,6 @@ func (a *TransactionCategoriesApi) CategoryCreateHandler(c *core.WebContext) (an
 			log.Warnf(c, "[transaction_categories.CategoryCreateHandler] parent category \"id:%d\" does not exist for user \"uid:%d\"", categoryCreateReq.ParentId, uid)
 			return nil, errs.ErrParentTransactionCategoryNotFound
 		}
-
-		if parentCategory.ParentCategoryId > 0 {
-			log.Warnf(c, "[transaction_categories.CategoryCreateHandler] parent category \"id:%d\" has another parent category \"id:%d\" for user \"uid:%d\"", parentCategory.CategoryId, parentCategory.ParentCategoryId, uid)
-			return nil, errs.ErrCannotAddToSecondaryTransactionCategory
-		}
 	}
 
 	var maxOrderId int32
@@ -230,35 +225,18 @@ func (a *TransactionCategoriesApi) CategoryModifyHandler(c *core.WebContext) (an
 		return nil, errs.ErrNothingWillBeUpdated
 	}
 
-	if category.ParentCategoryId == models.LevelOneTransactionCategoryParentId && newCategory.ParentCategoryId != models.LevelOneTransactionCategoryParentId {
-		return nil, errs.Or(err, errs.ErrNotAllowChangePrimaryTransactionCategoryToSecondary)
-	}
-
-	if category.ParentCategoryId != models.LevelOneTransactionCategoryParentId && newCategory.ParentCategoryId == models.LevelOneTransactionCategoryParentId {
-		return nil, errs.Or(err, errs.ErrNotAllowChangeSecondaryTransactionCategoryToPrimary)
-	}
-
 	if newCategory.ParentCategoryId != category.ParentCategoryId {
-		fromPrimaryCategory, err := a.categories.GetCategoryByCategoryId(c, uid, category.ParentCategoryId)
+		if newCategory.ParentCategoryId > 0 {
+			toParentCategory, err := a.categories.GetCategoryByCategoryId(c, uid, newCategory.ParentCategoryId)
 
-		if err != nil {
-			log.Errorf(c, "[transaction_categories.CategoryModifyHandler] failed to get old primary category \"id:%d\" of category \"id:%d\" for user \"uid:%d\", because %s", category.ParentCategoryId, categoryModifyReq.Id, uid, err.Error())
-			return nil, errs.Or(err, errs.ErrOperationFailed)
-		}
+			if err != nil {
+				log.Errorf(c, "[transaction_categories.CategoryModifyHandler] failed to get new parent category \"id:%d\" of category \"id:%d\" for user \"uid:%d\", because %s", newCategory.ParentCategoryId, categoryModifyReq.Id, uid, err.Error())
+				return nil, errs.Or(err, errs.ErrOperationFailed)
+			}
 
-		toPrimaryCategory, err := a.categories.GetCategoryByCategoryId(c, uid, newCategory.ParentCategoryId)
-
-		if err != nil {
-			log.Errorf(c, "[transaction_categories.CategoryModifyHandler] failed to get new primary category \"id:%d\" of category \"id:%d\" for user \"uid:%d\", because %s", newCategory.ParentCategoryId, categoryModifyReq.Id, uid, err.Error())
-			return nil, errs.Or(err, errs.ErrOperationFailed)
-		}
-
-		if fromPrimaryCategory.Type != toPrimaryCategory.Type {
-			return nil, errs.Or(err, errs.ErrNotAllowChangePrimaryTransactionType)
-		}
-
-		if toPrimaryCategory.ParentCategoryId != models.LevelOneTransactionCategoryParentId {
-			return nil, errs.Or(err, errs.ErrNotAllowUseSecondaryTransactionAsPrimaryCategory)
+			if category.Type != toParentCategory.Type {
+				return nil, errs.Or(err, errs.ErrNotAllowChangeParentTransactionType)
+			}
 		}
 
 		maxOrderId, err := a.categories.GetMaxSubCategoryDisplayOrder(c, uid, category.Type, newCategory.ParentCategoryId)
@@ -366,46 +344,76 @@ func (a *TransactionCategoriesApi) CategoryDeleteHandler(c *core.WebContext) (an
 }
 
 func (a *TransactionCategoriesApi) createBatchCategories(c *core.WebContext, uid int64, categoryCreateBatchReq *models.TransactionCategoryCreateBatchRequest) ([]*models.TransactionCategory, error) {
-	var err error
 	categoryTypeMaxOrderMap := make(map[models.TransactionCategoryType]int32)
-	categoriesMap := make(map[*models.TransactionCategory][]*models.TransactionCategory)
-	categoriesMap[nil] = make([]*models.TransactionCategory, len(categoryCreateBatchReq.Categories))
-	totalCount := 0
+	placeholderId := int64(-1)
 
-	for i := 0; i < len(categoryCreateBatchReq.Categories); i++ {
-		categoryCreateReq := categoryCreateBatchReq.Categories[i]
-		var maxOrderId, exists = categoryTypeMaxOrderMap[categoryCreateReq.Type]
+	var flatten func(categories []*models.TransactionCategoryCreateWithSubCategories, parentPlaceholderId int64, isRoot bool) ([]*models.TransactionCategory, error)
+	flatten = func(categories []*models.TransactionCategoryCreateWithSubCategories, parentPlaceholderId int64, isRoot bool) ([]*models.TransactionCategory, error) {
+		var result []*models.TransactionCategory
 
-		if !exists {
-			maxOrderId, err = a.categories.GetMaxDisplayOrder(c, uid, categoryCreateReq.Type)
+		for i, cat := range categories {
+			currentPlaceholder := placeholderId
+			placeholderId--
 
-			if err != nil {
-				log.Errorf(c, "[transaction_categories.CategoryCreateBatchHandler] failed to get max display order for user \"uid:%d\", because %s", uid, err.Error())
-				return nil, errs.Or(err, errs.ErrOperationFailed)
+			var order int32
+
+			if isRoot {
+				maxOrderId, exists := categoryTypeMaxOrderMap[cat.Type]
+
+				if !exists {
+					var err error
+					maxOrderId, err = a.categories.GetMaxDisplayOrder(c, uid, cat.Type)
+
+					if err != nil {
+						log.Errorf(c, "[transaction_categories.CategoryCreateBatchHandler] failed to get max display order for user \"uid:%d\", because %s", uid, err.Error())
+						return nil, errs.Or(err, errs.ErrOperationFailed)
+					}
+
+					categoryTypeMaxOrderMap[cat.Type] = maxOrderId
+				}
+
+				categoryTypeMaxOrderMap[cat.Type]++
+				order = categoryTypeMaxOrderMap[cat.Type]
+			} else {
+				order = int32(i + 1)
+			}
+
+			category := &models.TransactionCategory{
+				Uid:              uid,
+				ParentCategoryId: parentPlaceholderId,
+				Type:             cat.Type,
+				Name:             cat.Name,
+				DisplayOrder:     order,
+				Icon:             cat.Icon,
+				Color:            cat.Color,
+				Comment:          cat.Comment,
+				CategoryId:       currentPlaceholder,
+			}
+
+			result = append(result, category)
+
+			if len(cat.SubCategories) > 0 {
+				subResult, err := flatten(cat.SubCategories, currentPlaceholder, false)
+
+				if err != nil {
+					return nil, err
+				}
+
+				result = append(result, subResult...)
 			}
 		}
 
-		category := a.createNewCategoryModel(uid, &models.TransactionCategoryCreateRequest{
-			Name:  categoryCreateReq.Name,
-			Type:  categoryCreateReq.Type,
-			Icon:  categoryCreateReq.Icon,
-			Color: categoryCreateReq.Color,
-		}, maxOrderId+1)
-
-		categoriesMap[category] = make([]*models.TransactionCategory, len(categoryCreateReq.SubCategories))
-
-		for j := int32(0); j < int32(len(categoryCreateReq.SubCategories)); j++ {
-			subCategory := a.createNewCategoryModel(uid, categoryCreateReq.SubCategories[j], j+1)
-			categoriesMap[category][j] = subCategory
-			totalCount++
-		}
-
-		categoriesMap[nil][i] = category
-		categoryTypeMaxOrderMap[categoryCreateReq.Type] = maxOrderId + 1
-		totalCount++
+		return result, nil
 	}
 
-	categories, err := a.categories.CreateCategories(c, uid, categoriesMap)
+	allCategories, err := flatten(categoryCreateBatchReq.Categories, 0, true)
+
+	if err != nil {
+		log.Errorf(c, "[transaction_categories.createBatchCategories] failed to create categories for user \"uid:%d\", because %s", uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	categories, err := a.categories.CreateCategories(c, uid, allCategories)
 
 	if err != nil {
 		log.Errorf(c, "[transaction_categories.createBatchCategories] failed to create categories for user \"uid:%d\", because %s", uid, err.Error())
