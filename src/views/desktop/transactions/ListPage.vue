@@ -31,7 +31,7 @@
                                 v-model="queryType"
                             />
                         </div>
-                        <div class="mx-6 mt-4" v-if="pageType === TransactionListPageType.List.type">
+                        <div class="mx-6 mt-4" v-if="pageType === TransactionListPageType.List.type || pageType === TransactionListPageType.Gallery.type">
                             <span class="text-subtitle-2">{{ tt('Transactions Per Page') }}</span>
                             <v-select class="mt-2" density="compact"
                                       item-title="name"
@@ -186,7 +186,7 @@
                                                               v-model="currentCalendarDate"></transaction-calendar>
                                     </v-card-text>
 
-                                    <v-table class="transaction-table" :hover="!loading">
+                                    <v-table class="transaction-table" :hover="!loading" v-if="pageType !== TransactionListPageType.Gallery.type">
                                         <thead>
                                         <tr>
                                             <th class="transaction-table-column-time text-no-wrap">
@@ -529,110 +529,162 @@
                                         </tr>
                                         </tbody>
 
-                                        <tbody :key="transaction.id"
-                                               :class="{ 'disabled': loading, 'has-bottom-border': idx < displayTransactions.length - 1 }"
-                                               v-for="(transaction, idx) in displayTransactions">
-                                            <tr class="transaction-list-row-date no-hover text-sm"
-                                                 v-if="pageType === TransactionListPageType.List.type && (idx === 0 || (idx > 0 && (transaction.gregorianCalendarYearDashMonthDashDay !== displayTransactions[idx - 1]!.gregorianCalendarYearDashMonthDashDay)))">
+                                        <template v-for="(dayTransactions, dateKey) in transactionsByDay" :key="dateKey">
+                                            <!-- Заголовок даты -->
+                                            <tr class="transaction-list-row-date no-hover text-sm" 
+                                                v-if="pageType === TransactionListPageType.List.type && dayTransactions.length > 0">
                                                 <td :colspan="showTagInTransactionListPage ? 6 : 5" class="font-weight-bold">
                                                     <div class="d-flex align-center">
-                                                        <span>{{ getDisplayLongDate(transaction) }}</span>
-                                                        <v-chip class="ms-1" color="default" size="x-small"
-                                                                v-if="transaction.displayDayOfWeek">
-                                                            {{ getWeekdayLongName(transaction.displayDayOfWeek) }}
+                                                        <!-- Добавляем опциональную цепочку или проверку, хотя length > 0 уже гарантирует наличие -->
+                                                        <span>{{ getDisplayLongDate(dayTransactions[0]!) }}</span>
+                                                        <v-chip class="ms-1" color="default" size="x-small" 
+                                                                v-if="dayTransactions[0]?.displayDayOfWeek">
+                                                            {{ getWeekdayLongName(dayTransactions[0].displayDayOfWeek) }}
                                                         </v-chip>
                                                     </div>
                                                 </td>
                                             </tr>
-                                            <template v-if="transaction.receiptSummary">
-                                                <tr class="transaction-table-row-data text-sm cursor-pointer transaction-receipt-row"
+                                            <!-- Транзакции дня -->
+                                            <tbody 
+                                                v-for="(transaction, idx) in dayTransactions" 
+                                                :key="transaction.id"
+                                                :class="{ 'disabled': loading, 'has-bottom-border': idx < dayTransactions.length - 1 }"
+                                            >
+                                                <template v-if="transaction.receiptSummary">
+                                                    <tr class="transaction-table-row-data text-sm cursor-pointer transaction-receipt-row"
+                                                        @click="show(transaction)">
+                                                        <td class="transaction-table-column-time">
+                                                            <div class="d-flex flex-column">
+                                                                <span>{{ getDisplayTime(transaction) }}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td class="transaction-table-column-category">
+                                                            <div class="d-flex align-center">
+                                                                <v-icon size="24" :icon="mdiReceiptTextOutline" class="text-secondary" />
+                                                                <span class="ms-2">{{ tt('Receipt') }}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td class="transaction-table-column-description text-truncate">
+                                                            {{ transaction.receiptSummary.place || transaction.receiptSummary.comment }}
+                                                        </td>
+                                                        <td class="transaction-table-column-amount" :class="{ 'text-income': (transaction.receiptSummary?.totalAmount ?? 0) > 0, 'text-expense': (transaction.receiptSummary?.totalAmount ?? 0) < 0 }">
+                                                            <div>
+                                                                <span>{{ formatReceiptAmount(transaction) }}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td class="transaction-table-column-account">
+                                                            <div class="d-flex align-center">
+                                                                <span v-if="transaction.receiptSummary.accountId && accountsStore.allAccountsMap[transaction.receiptSummary.accountId]">{{ accountsStore.allAccountsMap[transaction.receiptSummary.accountId]?.name }}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td class="transaction-table-column-tags" v-if="showTagInTransactionListPage">
+                                                        </td>
+                                                    </tr>
+                                                </template>
+                                                <template v-else>
+                                                <tr class="transaction-table-row-data text-sm cursor-pointer"
                                                     @click="show(transaction)">
                                                     <td class="transaction-table-column-time">
                                                         <div class="d-flex flex-column">
                                                             <span>{{ getDisplayTime(transaction) }}</span>
+                                                            <span class="text-caption" v-if="!isSameAsDefaultTimezoneOffsetMinutes(transaction)">{{ getDisplayTimezone(transaction) }}</span>
+                                                            <v-tooltip activator="parent" v-if="!isSameAsDefaultTimezoneOffsetMinutes(transaction)">{{ getDisplayTimeInDefaultTimezone(transaction) }}</v-tooltip>
                                                         </div>
                                                     </td>
                                                     <td class="transaction-table-column-category">
                                                         <div class="d-flex align-center">
-                                                             <v-icon size="24" :icon="mdiReceiptTextOutline" class="text-secondary" />
-                                                            <span class="ms-2">{{ tt('Receipt') }}</span>
+                                                            <ItemIcon size="24px" icon-type="category"
+                                                                    :icon-id="transaction.category.icon"
+                                                                    :color="transaction.category.color"
+                                                                    v-if="transaction.category && transaction.category.color"></ItemIcon>
+                                                            <v-icon size="24" :icon="mdiPencilBoxOutline" v-else-if="!transaction.category || !transaction.category.color" />
+                                                            <span class="ms-2" v-if="transaction.type === TransactionType.ModifyBalance">
+                                                                {{ tt('Modify Balance') }}
+                                                            </span>
+                                                            <span class="ms-2" v-else-if="transaction.type !== TransactionType.ModifyBalance && transaction.category">
+                                                                {{ transaction.category.name }}
+                                                            </span>
+                                                            <span class="ms-2" v-else-if="transaction.type !== TransactionType.ModifyBalance && !transaction.category">
+                                                                {{ getTransactionTypeName(transaction.type, 'Transaction') }}
+                                                            </span>
                                                         </div>
                                                     </td>
                                                     <td class="transaction-table-column-description text-truncate">
-                                                        {{ transaction.receiptSummary.place || transaction.receiptSummary.comment }}
+                                                        {{ transaction.comment }}
                                                     </td>
-                                                    <td class="transaction-table-column-amount" :class="{ 'text-income': (transaction.receiptSummary?.totalAmount ?? 0) > 0, 'text-expense': (transaction.receiptSummary?.totalAmount ?? 0) < 0 }">
-                                                        <div>
-                                                            <span>{{ formatReceiptAmount(transaction) }}</span>
+                                                    <td class="transaction-table-column-amount" :class="{ 'text-expense': transaction.type === TransactionType.Expense, 'text-income': transaction.type === TransactionType.Income }">
+                                                        <div v-if="transaction.sourceAccount">
+                                                            <span>{{ getDisplayAmount(transaction) }}</span>
                                                         </div>
                                                     </td>
                                                     <td class="transaction-table-column-account">
                                                         <div class="d-flex align-center">
-                                                            <span v-if="transaction.receiptSummary.accountId && accountsStore.allAccountsMap[transaction.receiptSummary.accountId]">{{ accountsStore.allAccountsMap[transaction.receiptSummary.accountId]?.name }}</span>
+                                                            <span v-if="transaction.sourceAccount">{{ transaction.sourceAccount.name }}</span>
+                                                            <v-icon class="icon-with-direction mx-1" size="13" :icon="mdiArrowRight" v-if="transaction.sourceAccount && transaction.type === TransactionType.Transfer && transaction.destinationAccount && transaction.sourceAccount.id !== transaction.destinationAccount.id"></v-icon>
+                                                            <span v-if="transaction.sourceAccount && transaction.type === TransactionType.Transfer && transaction.destinationAccount && transaction.sourceAccount.id !== transaction.destinationAccount.id">{{ transaction.destinationAccount.name }}</span>
                                                         </div>
                                                     </td>
                                                     <td class="transaction-table-column-tags" v-if="showTagInTransactionListPage">
+                                                        <v-chip class="transaction-tag" size="small" :prepend-icon="mdiPound"
+                                                                :text="allTransactionTags[tagId]?.name"
+                                                                :key="tagId"
+                                                                v-for="tagId in transaction.tagIds"/>
+                                                        <v-chip class="transaction-tag" size="small"
+                                                                :text="tt('None')"
+                                                                v-if="!transaction.tagIds || !transaction.tagIds.length"/>
                                                     </td>
                                                 </tr>
-                                            </template>
-                                            <template v-else>
-                                            <tr class="transaction-table-row-data text-sm cursor-pointer"
-                                                @click="show(transaction)">
-                                                <td class="transaction-table-column-time">
-                                                    <div class="d-flex flex-column">
-                                                        <span>{{ getDisplayTime(transaction) }}</span>
-                                                        <span class="text-caption" v-if="!isSameAsDefaultTimezoneOffsetMinutes(transaction)">{{ getDisplayTimezone(transaction) }}</span>
-                                                        <v-tooltip activator="parent" v-if="!isSameAsDefaultTimezoneOffsetMinutes(transaction)">{{ getDisplayTimeInDefaultTimezone(transaction) }}</v-tooltip>
-                                                    </div>
-                                                </td>
-                                                <td class="transaction-table-column-category">
-                                                    <div class="d-flex align-center">
-                                                        <ItemIcon size="24px" icon-type="category"
-                                                                  :icon-id="transaction.category.icon"
-                                                                  :color="transaction.category.color"
-                                                                  v-if="transaction.category && transaction.category.color"></ItemIcon>
-                                                        <v-icon size="24" :icon="mdiPencilBoxOutline" v-else-if="!transaction.category || !transaction.category.color" />
-                                                        <span class="ms-2" v-if="transaction.type === TransactionType.ModifyBalance">
-                                                            {{ tt('Modify Balance') }}
-                                                        </span>
-                                                        <span class="ms-2" v-else-if="transaction.type !== TransactionType.ModifyBalance && transaction.category">
-                                                            {{ transaction.category.name }}
-                                                        </span>
-                                                        <span class="ms-2" v-else-if="transaction.type !== TransactionType.ModifyBalance && !transaction.category">
-                                                            {{ getTransactionTypeName(transaction.type, 'Transaction') }}
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                                <td class="transaction-table-column-description text-truncate">
-                                                    {{ transaction.comment }}
-                                                </td>
-                                                <td class="transaction-table-column-amount" :class="{ 'text-expense': transaction.type === TransactionType.Expense, 'text-income': transaction.type === TransactionType.Income }">
-                                                    <div v-if="transaction.sourceAccount">
-                                                        <span>{{ getDisplayAmount(transaction) }}</span>
-                                                    </div>
-                                                </td>
-                                                <td class="transaction-table-column-account">
-                                                    <div class="d-flex align-center">
-                                                        <span v-if="transaction.sourceAccount">{{ transaction.sourceAccount.name }}</span>
-                                                        <v-icon class="icon-with-direction mx-1" size="13" :icon="mdiArrowRight" v-if="transaction.sourceAccount && transaction.type === TransactionType.Transfer && transaction.destinationAccount && transaction.sourceAccount.id !== transaction.destinationAccount.id"></v-icon>
-                                                        <span v-if="transaction.sourceAccount && transaction.type === TransactionType.Transfer && transaction.destinationAccount && transaction.sourceAccount.id !== transaction.destinationAccount.id">{{ transaction.destinationAccount.name }}</span>
-                                                    </div>
-                                                </td>
-                                                <td class="transaction-table-column-tags" v-if="showTagInTransactionListPage">
-                                                    <v-chip class="transaction-tag" size="small" :prepend-icon="mdiPound"
-                                                            :text="allTransactionTags[tagId]?.name"
-                                                            :key="tagId"
-                                                            v-for="tagId in transaction.tagIds"/>
-                                                    <v-chip class="transaction-tag" size="small"
-                                                            :text="tt('None')"
-                                                            v-if="!transaction.tagIds || !transaction.tagIds.length"/>
-                                                </td>
-                                            </tr>
-                                            </template>
-                                        </tbody>
-                                    </v-table>
+                                                </template>
+                                            </tbody>
+                                        </template>                                    </v-table>
 
-                                    <div class="mt-2 mb-4" v-if="pageType === TransactionListPageType.List.type">
+                                    <v-card-text class="transaction-gallery-container" v-if="pageType === TransactionListPageType.Gallery.type">
+                                        <div v-if="loading && (!transactions || !transactions.length || transactions.length < 1)">
+                                            <v-skeleton-loader class="skeleton-no-margin mt-2" type="text" :loading="true"></v-skeleton-loader>
+                                        </div>
+
+                                        <div v-if="!loading && (!transactions || !transactions.length || transactions.length < 1)">
+                                            {{ tt('No transaction data') }}
+                                        </div>
+
+                                        <div :key="date" :class="{ 'disabled': loading }"
+                                             v-for="(transactions, date) in transactionsByDay">
+                                            <div class="text-sm text-body-2 font-weight-bold">
+                                                <div class="d-flex align-center">
+                                                    <span>{{ getDisplayLongDate(transactions[0] as Transaction) }}</span>
+                                                    <v-chip class="ms-1" color="default" size="x-small"
+                                                            v-if="(transactions[0] as Transaction).displayDayOfWeek">
+                                                        {{ getWeekdayLongName((transactions[0] as Transaction).displayDayOfWeek as WeekDay) }}
+                                                    </v-chip>
+                                                </div>
+                                            </div>
+                                            <div class="d-flex flex-wrap gap-2 py-2">
+                                                <v-avatar rounded="lg" variant="tonal" size="160"
+                                                          class="cursor-pointer transaction-picture" color="rgba(0,0,0,0)"
+                                                          :key="pictureInfo.pictureId"
+                                                          v-for="[transaction, pictureInfo] in allTransactionPictures(transactions)"
+                                                          @click="show(transaction)">
+                                                    <v-img :src="getTransactionPictureUrl(pictureInfo)">
+                                                        <template #placeholder>
+                                                            <div class="d-flex align-center justify-center fill-height bg-light-primary">
+                                                                <v-progress-circular color="grey-500" indeterminate size="48"></v-progress-circular>
+                                                            </div>
+                                                        </template>
+                                                        <template #error>
+                                                            <div class="d-flex align-center justify-center fill-height bg-light-primary">
+                                                                <span class="text-body-1">{{ tt('Failed to load image, please check whether the config "domain" and "root_url" are set correctly.') }}</span>
+                                                            </div>
+                                                        </template>
+                                                    </v-img>
+                                                    <div class="picture-control-icon">
+                                                        <v-icon size="64" :icon="mdiTextBoxEditOutline"/>
+                                                    </div>
+                                                </v-avatar>
+                                            </div>
+                                        </div>
+                                    </v-card-text>
+
+                                    <div class="mt-2 mb-4" v-if="pageType === TransactionListPageType.List.type || pageType === TransactionListPageType.Gallery.type">
                                         <pagination-buttons :totalPageCount="totalPageCount"
                                                             v-model="paginationCurrentPage"></pagination-buttons>
                                     </div>
@@ -720,10 +772,11 @@ import {
     type Year0BasedMonth,
     type LocalizedRecentMonthDateRange,
     type TimeRangeAndDateType,
+    type WeekDay,
     DateRangeScene,
     DateRange
 } from '@/core/datetime.ts';
-import { type NumeralSystem, AmountFilterType } from '@/core/numeral.ts';
+import { AmountFilterType } from '@/core/numeral.ts';
 import { ThemeType } from '@/core/theme.ts';
 import { TransactionType } from '@/core/transaction.ts';
 import { TemplateType }  from '@/core/template.ts';
@@ -750,6 +803,7 @@ import {
     getDateTypeByBillingCycleDateRange,
     getDateRangeByDateType,
     getDateRangeByBillingCycleDateType,
+    getDateRangeByLastReconciledTimeRangeDateType,
     getRecentDateRangeIndex,
     getFullMonthDateRange,
     getValidMonthDayOrCurrentDayShortDate
@@ -758,6 +812,7 @@ import {
     categoryTypeToTransactionType,
     transactionTypeToCategoryType
 } from '@/lib/category.ts';
+import { allTransactionPictures } from '@/lib/transaction.ts';
 import { isDataExportingEnabled, isDataImportingEnabled, isTransactionFromAIImageRecognitionEnabled } from '@/lib/server_settings.ts';
 import { scrollToSelectedItem, startDownloadFile } from '@/lib/ui/common.ts';
 import logger from '@/lib/logger.ts';
@@ -778,6 +833,7 @@ import {
     mdiPound,
     mdiMagicStaff,
     mdiTextBoxOutline,
+    mdiTextBoxEditOutline,
     mdiReceiptTextOutline
 } from '@mdi/js';
 
@@ -816,8 +872,7 @@ const {
     tt,
     getAllRecentMonthDateRanges,
     getWeekdayLongName,
-    getCurrentNumeralSystemType,
-    formatAmountToLocalizedNumerals
+    formatNumberToLocalizedNumerals
 } = useI18n();
 
 const {
@@ -871,6 +926,7 @@ const {
     getDisplayAmount,
     getDisplayMonthTotalAmount,
     getTransactionTypeName,
+    getTransactionPictureUrl
 } = useTransactionListPageBase();
 
 const settingsStore = useSettingsStore();
@@ -916,20 +972,19 @@ const showFilterCategoryDialog = ref<boolean>(false);
 const showFilterTagDialog = ref<boolean>(false);
 
 const isDarkMode = computed<boolean>(() => theme.global.name.value === ThemeType.Dark);
-const numeralSystem = computed<NumeralSystem>(() => getCurrentNumeralSystemType());
 
 const allPageCounts = computed<NameNumeralValue[]>(() => {
     const pageCounts: NameNumeralValue[] = [];
     const availableCountPerPage: number[] = [ 5, 10, 15, 20, 25, 30, 50 ];
 
     for (const count of availableCountPerPage) {
-        pageCounts.push({ value: count, name: numeralSystem.value.replaceWesternArabicDigitsToLocalizedDigits(count.toString()) });
+        pageCounts.push({ value: count, name: formatNumberToLocalizedNumerals(count) });
     }
 
     return pageCounts;
 });
 
-const recentMonthDateRanges = computed<LocalizedRecentMonthDateRange[]>(() => getAllRecentMonthDateRanges(pageType.value === TransactionListPageType.List.type, true));
+const recentMonthDateRanges = computed<LocalizedRecentMonthDateRange[]>(() => getAllRecentMonthDateRanges(pageType.value === TransactionListPageType.List.type || pageType.value === TransactionListPageType.Gallery.type, true));
 
 const allTransactionTemplates = computed<TransactionTemplate[]>(() => {
     const allTemplates = transactionTemplatesStore.allVisibleTemplates;
@@ -945,7 +1000,7 @@ const allowCategoryTypes = computed<string>(() => {
 });
 
 const transactions = computed<Transaction[]>(() => {
-    if (pageType.value === TransactionListPageType.List.type) {
+    if (pageType.value === TransactionListPageType.List.type || pageType.value === TransactionListPageType.Gallery.type) {
         if (queryMonthlyData.value) {
             const transactionData = currentMonthTransactionData.value;
 
@@ -985,21 +1040,29 @@ const transactions = computed<Transaction[]>(() => {
     }
 });
 
-const displayTransactions = computed<Transaction[]>(() => {
+const transactionsByDay = computed<Record<string, Transaction[]>>(() => {
+    const transactionsByDay: Record<string, Transaction[]> = {};
     const seenReceiptIds = new Set<string>();
-    const result: Transaction[] = [];
 
     for (const transaction of transactions.value) {
+        if (!transaction.gregorianCalendarYearDashMonthDashDay) {
+            continue;
+        }
+
+        // Логика фильтрации дубликатов чеков (из вашей версии)
         if (transaction.receiptId && transaction.receiptSummary) {
             if (seenReceiptIds.has(transaction.receiptId)) {
                 continue;
             }
             seenReceiptIds.add(transaction.receiptId);
         }
-        result.push(transaction);
+
+        const dayTransactions: Transaction[] = transactionsByDay[transaction.gregorianCalendarYearDashMonthDashDay] ?? [];
+        dayTransactions.push(transaction);
+        transactionsByDay[transaction.gregorianCalendarYearDashMonthDashDay] = dayTransactions;
     }
 
-    return result;
+    return transactionsByDay;
 });
 
 const recentDateRangeIndex = computed<number>({
@@ -1163,7 +1226,7 @@ function init(initProps: TransactionListProps): void {
     let dateRange: TimeRangeAndDateType | null = getDateRangeByDateType(initProps.initDateType ? parseInt(initProps.initDateType) : undefined, firstDayOfWeek.value, fiscalYearStart.value);
 
     if (!dateRange && initProps.initDateType && initProps.initMaxTime && initProps.initMinTime &&
-        (DateRange.isBillingCycle(parseInt(initProps.initDateType)) || initProps.initDateType === DateRange.Custom.type.toString()) &&
+        (DateRange.isBillingCycle(parseInt(initProps.initDateType)) || DateRange.isLastReconciledTimeRange(parseInt(initProps.initDateType)) || initProps.initDateType === DateRange.Custom.type.toString()) &&
         parseInt(initProps.initMaxTime) > 0 && parseInt(initProps.initMinTime) > 0) {
         dateRange = {
             dateType: parseInt(initProps.initDateType),
@@ -1226,6 +1289,7 @@ function init(initProps: TransactionListProps): void {
 function reload(force: boolean, init: boolean): void {
     loading.value = true;
 
+    const isGalleryMode = pageType.value === TransactionListPageType.Gallery.type;
     const page = currentPage.value;
 
     Promise.all([
@@ -1248,6 +1312,8 @@ function reload(force: boolean, init: boolean): void {
             return transactionsStore.loadMonthlyAllTransactions({
                 year: currentYear,
                 month: currentMonth,
+                mustHavePictures: isGalleryMode,
+                withPictures: isGalleryMode,
                 autoExpand: true,
                 defaultCurrency: defaultCurrency.value
             });
@@ -1256,7 +1322,9 @@ function reload(force: boolean, init: boolean): void {
                 reload: true,
                 count: countPerPage.value,
                 page: page,
+                mustHavePictures: isGalleryMode,
                 withCount: page <= 1,
+                withPictures: isGalleryMode,
                 autoExpand: true,
                 defaultCurrency: defaultCurrency.value
             });
@@ -1325,6 +1393,8 @@ function changeDateFilter(dateRange: TimeRangeAndDateType | number | null): void
     if (isNumber(dateRange)) {
         if (DateRange.isBillingCycle(dateRange)) {
             dateRange = getDateRangeByBillingCycleDateType(dateRange, firstDayOfWeek.value, fiscalYearStart.value, accountsStore.getAccountStatementDate(query.value.accountIds));
+        } else if (DateRange.isLastReconciledTimeRange(dateRange)) {
+            dateRange = getDateRangeByLastReconciledTimeRangeDateType(dateRange, allAccountsMap.value[query.value.accountIds]?.lastReconciledTime);
         } else {
             dateRange = getDateRangeByDateType(dateRange, firstDayOfWeek.value, fiscalYearStart.value);
         }
@@ -1712,9 +1782,9 @@ function formatReceiptAmount(transaction: Transaction): string {
     const amount = Math.abs(summary.totalAmount);
     const account = summary.accountId ? accountsStore.allAccountsMap[summary.accountId] : undefined;
     if (account) {
-        return `${formatAmountToLocalizedNumerals(amount, account.currency)} ${account.currency}`;
+        return `${formatNumberToLocalizedNumerals(amount/100)} ${account.currency}`;
     }
-    return formatAmountToLocalizedNumerals(amount);
+    return formatNumberToLocalizedNumerals(amount/100);
 }
 
 function show(transaction: Transaction): void {
@@ -1986,5 +2056,9 @@ init(props);
 
 .transaction-calendar-container .dp__main .dp__calendar .dp__calendar_row > .dp__calendar_item .transaction-calendar-daily-amounts > span.transaction-calendar-daily-amount {
     font-size: 0.95rem;
+}
+
+.transaction-gallery-container {
+    color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
 }
 </style>
