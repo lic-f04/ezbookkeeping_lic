@@ -141,6 +141,8 @@
                                                     <span>HH:mm</span>
                                                     <span>·</span>
                                                     <span>Source Account</span>
+                                                    <span>·</span>
+                                                    <f7-icon f7="circle"></f7-icon>
                                                 </div>
                                             </div>
                                         </div>
@@ -232,6 +234,9 @@
                                 <div class="display-flex no-padding-horizontal">
                                     <div class="item-media">
                                         <div class="transaction-icon display-flex align-items-center">
+                                            <span @pointerdown.stop.prevent="openStatusActionSheet(transaction)" class="me-1">
+                                                <f7-icon :f7="TransactionStatus.valueOf(transaction.receiptSummary ? transaction.receiptSummary.status : transaction.status)?.icon || 'circle'" :style="{ color: TransactionStatus.valueOf(transaction.receiptSummary ? transaction.receiptSummary.status : transaction.status)?.color || undefined }" class="transaction-status-icon"></f7-icon>
+                                            </span>
                                             <f7-icon f7="doc_text" color="gray" v-if="transaction.receiptSummary"></f7-icon>
                                             <ItemIcon icon-type="category"
                                                       :icon-id="transaction.category.icon"
@@ -252,17 +257,19 @@
                                                     <div class="transaction-title-primary" v-else>
                                                         {{ transaction.comment || getTransactionTypeName(transaction.type, 'Transaction') }}
                                                     </div>
-                                                    <div class="transaction-title-secondary" v-if="transaction.receiptSummary">
-                                                        {{ transaction.receiptSummary.comment || transaction.receiptSummary.place || '' }}
-                                                    </div>
-                                                    <div class="transaction-title-secondary" v-else-if="transaction.type === TransactionType.ModifyBalance">
-                                                        {{ tt('Modify Balance') }}
-                                                    </div>
-                                                    <div class="transaction-title-secondary" v-else-if="transaction.category">
-                                                        {{ transaction.category.name }}
-                                                    </div>
-                                                    <div class="transaction-title-secondary" v-else>
-                                                        {{ getTransactionTypeName(transaction.type, 'Transaction') }}
+                                                    <div class="d-flex align-center flex-wrap">
+                                                        <div class="transaction-title-secondary" v-if="transaction.receiptSummary">
+                                                            {{ transaction.receiptSummary.comment || transaction.receiptSummary.place || '' }}
+                                                        </div>
+                                                        <div class="transaction-title-secondary" v-else-if="transaction.type === TransactionType.ModifyBalance">
+                                                            {{ tt('Modify Balance') }}
+                                                        </div>
+                                                        <div class="transaction-title-secondary" v-else-if="transaction.category">
+                                                            {{ transaction.category.name }}
+                                                        </div>
+                                                        <div class="transaction-title-secondary" v-else>
+                                                            {{ getTransactionTypeName(transaction.type, 'Transaction') }}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -657,6 +664,21 @@
                 <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
             </f7-actions-group>
         </f7-actions>
+
+        <f7-actions close-by-outside-click close-on-escape :opened="showStatusActionSheet" @actions:closed="showStatusActionSheet = false">
+            <f7-actions-group>
+                <f7-actions-button bold v-for="s in TransactionStatus.values()" :key="s.type"
+                    @click="changeTransactionStatusFromSheet(s.type)">
+                    <div class="d-flex align-center justify-content-center">
+                        <f7-icon :f7="s.icon" :style="{ color: s.color || undefined }" class="me-2"></f7-icon>
+                        <span>{{ tt(`transactionStatus.${s.name}`) }}</span>
+                    </div>
+                </f7-actions-button>
+            </f7-actions-group>
+            <f7-actions-group>
+                <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
+            </f7-actions-group>
+        </f7-actions>
     </f7-page>
 </template>
 
@@ -694,7 +716,7 @@ import {
     DateRange
 } from '@/core/datetime.ts';
 import { AmountFilterType } from '@/core/numeral.ts';
-import { TransactionType } from '@/core/transaction.ts';
+import { TransactionStatus, TransactionType } from '@/core/transaction.ts';
 import type { TransactionCategory } from '@/models/transaction_category.ts';
 import { type Transaction, TransactionTagFilter } from '@/models/transaction.ts';
 
@@ -724,6 +746,7 @@ import {
     transactionTypeToCategoryType
 } from '@/lib/category.ts';
 import { allTransactionPictures } from '@/lib/transaction.ts';
+import services from '@/lib/services.ts';
 
 const props = defineProps<{
     f7route: Router.Route;
@@ -734,7 +757,8 @@ const {
     tt,
     getCurrentLanguageTextDirection,
     getWeekdayShortName,
-    formatNumberToLocalizedNumeralsWithoutDigitGrouping
+    formatNumberToLocalizedNumeralsWithoutDigitGrouping,
+    formatAmountToLocalizedNumeralsWithCurrency
 } = useI18n();
 
 const { showAlert, showToast, routeBackOnError } = useI18nUIComponents();
@@ -809,6 +833,54 @@ const showCustomDateRangeSheet = ref<boolean>(false);
 const showCustomMonthSheet = ref<boolean>(false);
 const showAddActionSheet = ref<boolean>(false);
 const showDeleteActionSheet = ref<boolean>(false);
+const showStatusActionSheet = ref<boolean>(false);
+const selectedStatusTransaction = ref<Transaction | null>(null);
+
+function openStatusActionSheet(transaction: Transaction): void {
+    selectedStatusTransaction.value = transaction;
+    showStatusActionSheet.value = true;
+}
+
+function changeTransactionStatusFromSheet(newStatus: number): void {
+    const transaction = selectedStatusTransaction.value;
+    if (!transaction) return;
+
+    const currentStatus = transaction.receiptSummary ? transaction.receiptSummary.status : transaction.status;
+    if (currentStatus === newStatus) {
+        showStatusActionSheet.value = false;
+        return;
+    }
+
+    showStatusActionSheet.value = false;
+
+    if (transaction.receiptSummary) {
+        services.modifyReceiptStatus({
+            id: transaction.receiptSummary.id,
+            status: newStatus
+        }).then(() => {
+            transactionsStore.transactionListStateInvalid = true;
+            accountsStore.updateAccountListInvalidState(true);
+            reload();
+        }).catch(error => {
+            if (!error.processed) {
+                showAlert(error.message || 'Unable to change status');
+            }
+        });
+    } else {
+        services.modifyTransactionStatus({
+            id: transaction.id,
+            status: newStatus
+        }).then(() => {
+            transactionsStore.transactionListStateInvalid = true;
+            accountsStore.updateAccountListInvalidState(true);
+            reload();
+        }).catch(error => {
+            if (!error.processed) {
+                showAlert(error.message || 'Unable to change status');
+            }
+        });
+    }
+}
 
 const textDirection = computed<TextDirection>(() => getCurrentLanguageTextDirection());
 const isDarkMode = computed<boolean>(() => environmentsStore.framework7DarkMode || false);
@@ -997,20 +1069,8 @@ function getDisplayReceiptAmount(transaction: Transaction): string {
     const summary = transaction.receiptSummary;
     if (!summary) return '';
 
-    const amount = Math.abs(summary.totalAmount) / 100;
-    let currency: string | undefined;
-
-    if (summary.accountId) {
-        const account = accountsStore.allAccountsMap[summary.accountId];
-        if (account) {
-            currency = account.currency;
-        }
-    }
-
-    if (currency) {
-        return formatNumberToLocalizedNumeralsWithoutDigitGrouping(amount);
-    }
-    return formatNumberToLocalizedNumeralsWithoutDigitGrouping(amount);
+    const currency = summary.accountId ? accountsStore.allAccountsMap[summary.accountId]?.currency : undefined;
+    return formatAmountToLocalizedNumeralsWithCurrency(summary.totalAmount, currency);
 }
 
 function getCategoryListItemCheckedClass(category: TransactionCategory, queryCategoryIds: Record<string, boolean>): Record<string, boolean> {

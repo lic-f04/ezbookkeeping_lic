@@ -25,8 +25,9 @@
                 v-model:value="receipt.place"
             ></f7-list-input>
 
+            <!-- Status + Account merged -->
             <f7-list-item
-                class="list-item-with-header-and-title"
+                class="list-item-with-header-and-title transaction-receipt-account-row"
                 :header="tt('Account')"
                 :title="accountName"
                 link="#"
@@ -34,6 +35,23 @@
                 :disabled="loading || submitting"
                 @click="showAccountPicker = true"
             >
+                <template #media>
+                    <f7-icon :f7="TransactionStatus.valueOf(receipt.status)?.icon || 'circle'" :style="{ color: TransactionStatus.valueOf(receipt.status)?.color || undefined }" class="transaction-status-icon" @click.stop="showStatusSheet = true"></f7-icon>
+                </template>
+                <f7-actions close-by-outside-click close-on-escape :opened="showStatusSheet" @actions:closed="showStatusSheet = false">
+                    <f7-actions-group>
+                        <f7-actions-button bold v-for="s in TransactionStatus.values()" :key="s.type"
+                            @click="setReceiptStatus(s.type)">
+                            <div class="d-flex align-center justify-content-center">
+                                <f7-icon :f7="s.icon" :style="{ color: s.color || undefined }" class="me-2"></f7-icon>
+                                <span>{{ tt(`transactionStatus.${s.name}`) }}</span>
+                            </div>
+                        </f7-actions-button>
+                    </f7-actions-group>
+                    <f7-actions-group>
+                        <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
+                    </f7-actions-group>
+                </f7-actions>
                 <two-column-list-item-selection-sheet primary-key-field="id" primary-value-field="category"
                     primary-title-field="name" primary-footer-field="displayBalance"
                     primary-icon-field="icon" primary-icon-type="account"
@@ -84,7 +102,7 @@
                 </template>
                 <template #title>
                     <span :class="{ 'text-income': receipt.totalAmount > 0, 'text-expense': receipt.totalAmount < 0 }">
-                        {{ formatAmount(Math.abs(receipt.totalAmount)) }}
+                        {{ formatAmountToLocalizedNumeralsWithCurrency(receipt.totalAmount, receipt.accountId ? accountsStore.allAccountsMap[receipt.accountId]?.currency : undefined) }}
                     </span>
                 </template>
             </f7-list-item>
@@ -116,10 +134,10 @@
                 <template #after>
                     <div class="transaction-receipt-amount-column">
                         <div :class="{ 'text-expense': transaction.type === TransactionType.Expense, 'text-income': transaction.type === TransactionType.Income, 'text-color-primary': transaction.type === TransactionType.Transfer }">
-                            {{ formatAmount(transaction.sourceAmount) }}
+                            {{ formatAmountToLocalizedNumeralsWithCurrency(transaction.sourceAmount, transaction.sourceAccount?.currency) }}
                         </div>
                         <div class="transaction-receipt-quantity-row" v-if="transaction.quantity || transaction.unitPrice">
-                            {{ formatQuantity(transaction.quantity) }} × {{ formatAmount(transaction.unitPrice) }}
+                            {{ formatQuantity(transaction.quantity) }} × {{ formatAmountToLocalizedNumeralsWithCurrency(transaction.unitPrice, transaction.sourceAccount?.currency) }}
                         </div>
                     </div>
                 </template>
@@ -148,20 +166,22 @@ import { useI18n } from '@/locales/helpers.ts';
 
 import { useReceiptsStore } from '@/stores/receipt.ts';
 import { useAccountsStore } from '@/stores/account.ts';
+import { useTransactionsStore } from '@/stores/transaction.ts';
 import { useSettingsStore } from '@/stores/setting.ts';
 
 import { getCurrentUnixTime, getBrowserTimezoneOffsetMinutes, parseDateTimeFromUnixTimeWithTimezoneOffset } from '@/lib/datetime.ts';
-import { TransactionType } from '@/core/transaction.ts';
+import { TransactionType, TransactionStatus } from '@/core/transaction.ts';
 import { Receipt, type ReceiptModifyRequest } from '@/models/receipt.ts';
 import { useI18nUIComponents, showLoading, hideLoading } from '@/lib/ui/mobile.ts';
 import services from '@/lib/services.ts';
 import DateTimeSelectionSheet from '@/components/mobile/DateTimeSelectionSheet.vue';
 
-const { tt, formatAmountToLocalizedNumerals, formatDateTimeToLongDate, formatDateTimeToLongTime, getCategorizedAccountsWithDisplayBalance } = useI18n();
+const { tt, formatAmountToLocalizedNumeralsWithCurrency, formatDateTimeToLongDate, formatDateTimeToLongTime, getCategorizedAccountsWithDisplayBalance } = useI18n();
 const { showAlert } = useI18nUIComponents();
 
 const receiptsStore = useReceiptsStore();
 const accountsStore = useAccountsStore();
+const transactionsStore = useTransactionsStore();
 const settingsStore = useSettingsStore();
 
 const props = defineProps<{
@@ -176,8 +196,10 @@ const currentReceiptId = ref<string>('');
 const isCreateMode = ref<boolean>(false);
 const isReceiptPersisted = ref<boolean>(false);
 const showAccountPicker = ref<boolean>(false);
+const showStatusSheet = ref<boolean>(false);
 const showReceiptDateTimeSheet = ref<boolean>(false);
 const receiptDateTimeSheetMode = ref<string>('time');
+
 
 const accountName = computed<string>(() => {
     if (!receipt.value?.accountId) return tt('None');
@@ -205,10 +227,6 @@ const receiptDisplayTime = computed<string>(() => {
     return formatDateTimeToLongTime(dateTime);
 });
 
-function formatAmount(amount: number): string {
-    return formatAmountToLocalizedNumerals(Math.abs(amount));
-}
-
 function formatQuantity(qty: number): string {
     return Number(qty / 1000).toLocaleString(undefined, {
         minimumFractionDigits: 0,
@@ -219,6 +237,12 @@ function formatQuantity(qty: number): string {
 function showDateTimeDialog(sheetMode: string): void {
     receiptDateTimeSheetMode.value = sheetMode;
     showReceiptDateTimeSheet.value = true;
+}
+
+function setReceiptStatus(status: number): void {
+    if (receipt.value) {
+        Object.assign(receipt.value, { status });
+    }
 }
 
 function updateReceiptTime(newTime: number): void {
@@ -253,6 +277,7 @@ function load(): void {
             place: '',
             comment: '',
             totalAmount: 0,
+            status: 0,
             transactions: []
         });
         currentReceiptId.value = '';
@@ -291,9 +316,12 @@ function save(): void {
         utcOffset: receipt.value.utcOffset,
         accountId: receipt.value.accountId,
         place: receipt.value.place,
-        comment: receipt.value.comment
+        comment: receipt.value.comment,
+        status: receipt.value.status
     } as ReceiptModifyRequest).then(() => {
         submitting.value = false;
+transactionsStore.transactionListStateInvalid = true;
+accountsStore.updateAccountListInvalidState(true);
         props.f7router?.back();
     }).catch(error => {
         submitting.value = false;
@@ -398,5 +426,14 @@ function removeTransaction(transactionId: string): void {
     align-items: center;
     justify-content: space-between;
     width: 100%;
+}
+
+.transaction-receipt-account-row .item-content .item-header {
+    margin-bottom: 4px;
+}
+
+.transaction-receipt-account-row .item-content .item-inner {
+    padding-top: 6px;
+    padding-bottom: 6px;
 }
 </style>

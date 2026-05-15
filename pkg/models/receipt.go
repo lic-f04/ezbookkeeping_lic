@@ -14,8 +14,9 @@ type Receipt struct {
 	AccountId         int64  `xorm:"NOT NULL DEFAULT 0"`
 	Place             string `xorm:"VARCHAR(255) NOT NULL DEFAULT ''"`
 	Comment           string `xorm:"VARCHAR(255) NOT NULL DEFAULT ''"`
-	TotalAmount       int64  `xorm:"NOT NULL DEFAULT 0"`
-	CreatedIp         string `xorm:"VARCHAR(39)"`
+	TotalAmount       int64            `xorm:"NOT NULL DEFAULT 0"`
+	Status            TransactionStatus `xorm:"NOT NULL DEFAULT 0"`
+	CreatedIp         string           `xorm:"VARCHAR(39)"`
 	CreatedUnixTime   int64
 	UpdatedUnixTime   int64
 	DeletedUnixTime   int64
@@ -32,12 +33,13 @@ type ReceiptCreateRequest struct {
 
 // ReceiptModifyRequest represents receipt modification request
 type ReceiptModifyRequest struct {
-	Id        int64  `json:"id,string" binding:"required,min=1"`
-	Time      int64  `json:"time" binding:"required,min=1"`
-	UtcOffset int16  `json:"utcOffset" binding:"min=-720,max=840"`
-	AccountId int64  `json:"accountId,string"`
-	Place     string `json:"place" binding:"max=255"`
-	Comment   string `json:"comment" binding:"max=255"`
+	Id        int64              `json:"id,string" binding:"required,min=1"`
+	Time      int64              `json:"time" binding:"required,min=1"`
+	UtcOffset int16              `json:"utcOffset" binding:"min=-720,max=840"`
+	AccountId int64              `json:"accountId,string"`
+	Place     string             `json:"place" binding:"max=255"`
+	Comment   string             `json:"comment" binding:"max=255"`
+	Status    TransactionStatus  `json:"status,omitempty" binding:"min=0,max=2"`
 }
 
 // ReceiptDeleteRequest represents receipt deletion request
@@ -69,8 +71,9 @@ type ReceiptSummaryResponse struct {
 	UtcOffset   int16  `json:"utcOffset"`
 	Place       string `json:"place"`
 	Comment     string `json:"comment"`
-	TotalAmount int64  `json:"totalAmount"`
-	AccountId   int64  `json:"accountId,string,omitempty"`
+	TotalAmount int64              `json:"totalAmount"`
+	AccountId   int64              `json:"accountId,string,omitempty"`
+	Status      TransactionStatus  `json:"status"`
 }
 
 // ReceiptInfoResponse represents a view-object of receipt
@@ -82,6 +85,7 @@ type ReceiptInfoResponse struct {
 	Place        string                       `json:"place"`
 	Comment      string                       `json:"comment"`
 	TotalAmount  int64                        `json:"totalAmount"`
+	Status       TransactionStatus            `json:"status"`
 	Transactions TransactionInfoResponseSlice `json:"transactions,omitempty"`
 }
 
@@ -107,6 +111,7 @@ func (r *Receipt) ToReceiptInfoResponse() *ReceiptInfoResponse {
 		Place:       r.Place,
 		Comment:     r.Comment,
 		TotalAmount: r.TotalAmount,
+		Status:      r.Status,
 	}
 }
 
@@ -120,5 +125,6 @@ func (r *Receipt) ToReceiptSummaryResponse() *ReceiptSummaryResponse {
 		Comment:     r.Comment,
 		TotalAmount: r.TotalAmount,
 		AccountId:   r.AccountId,
+		Status:      r.Status,
 	}
 }

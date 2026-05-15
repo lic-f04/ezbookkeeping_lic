@@ -29,6 +29,7 @@ export class Transaction implements TransactionInfoResponse {
     public tagIds: string[];
     public comment: string;
     public editable: boolean;
+    public status: number = 0;
     public receiptId: string = '';
     public receiptSummary?: ReceiptSummaryResponse;
 
@@ -44,7 +45,7 @@ export class Transaction implements TransactionInfoResponse {
     private _gregorianCalendarDayOfMonth?: number = undefined; // only for displaying transaction in transaction list
     private _displayDayOfWeek?: WeekDay = undefined; // only for displaying transaction in transaction list
 
-    protected constructor(id: string, timeSequenceId: string, type: number, categoryId: string, time: number, timeZone: string | undefined, utcOffset: number, sourceAccountId: string, destinationAccountId: string, sourceAmount: number, destinationAmount: number, quantity: number, unitPrice: number, hideAmount: boolean, tagIds: string[], comment: string, editable: boolean, receiptId: string = '') {
+    protected constructor(id: string, timeSequenceId: string, type: number, categoryId: string, time: number, timeZone: string | undefined, utcOffset: number, sourceAccountId: string, destinationAccountId: string, sourceAmount: number, destinationAmount: number, quantity: number, unitPrice: number, hideAmount: boolean, tagIds: string[], comment: string, editable: boolean, status: number = 0, receiptId: string = '') {
         this.id = id;
         this.timeSequenceId = timeSequenceId;
         this.type = type;
@@ -61,6 +62,7 @@ export class Transaction implements TransactionInfoResponse {
         this.tagIds = tagIds;
         this.comment = comment;
         this.editable = editable;
+        this.status = status;
         this.receiptId = receiptId;
         this.setCategoryId(categoryId);
     }
@@ -276,6 +278,7 @@ export class Transaction implements TransactionInfoResponse {
             quantity: Math.round(this.quantity * 1000),  // Lic
             unitPrice: Math.round(this.unitPrice * 100), // Lic
             hideAmount: this.hideAmount,
+            status: this.status,
             tagIds: this.tagIds,
             pictureIds: this.getPictureIds(),
             comment: this.comment,
@@ -306,6 +309,13 @@ export class Transaction implements TransactionInfoResponse {
         };
     }
 
+    public toStatusModifyRequest(status: number): TransactionStatusModifyRequest {
+        return {
+            id: this.id,
+            status: status
+        };
+    }
+
     public static createNewTransaction(type: number, time: number, timeZone: string, utcOffset: number, receiptId: string = ''): Transaction {
         return new Transaction(
             '', // id
@@ -325,6 +335,7 @@ export class Transaction implements TransactionInfoResponse {
             [], // tagIds
             '', // comment
             true, // editable
+            0, // status
             receiptId
         );
     }
@@ -348,6 +359,7 @@ export class Transaction implements TransactionInfoResponse {
             transactionResponse.tagIds,
             transactionResponse.comment,
             transactionResponse.editable,
+            transactionResponse.status ?? 0,
             transactionResponse.receiptId ?? ''
         );
 
@@ -424,7 +436,8 @@ export class Transaction implements TransactionInfoResponse {
             transactionDraft.hideAmount ?? false, // hideAmount
             transactionDraft.tagIds ?? [], // tagIds
             transactionDraft.comment ?? '', // comment
-            true // editable
+            true, // editable
+            0 // status
         );
 
         if (transactionDraft.pictures) {
@@ -586,10 +599,21 @@ export interface TransactionModifyRequest {
     readonly quantity: number;           // Lic
     readonly unitPrice: number;          // Lic
     readonly hideAmount: boolean;
+    readonly status?: number;
     readonly tagIds: string[];
     readonly pictureIds: string[];
     readonly comment: string;
     readonly geoLocation?: TransactionGeoLocationRequest;
+}
+
+export interface TransactionStatusModifyRequest {
+    readonly id: string;
+    readonly status: number;
+}
+
+export interface TransactionBatchStatusModifyRequest {
+    readonly ids: string[];
+    readonly status: number;
 }
 
 export interface TransactionBatchUpdateCategoryRequest {
@@ -702,6 +726,7 @@ export interface TransactionInfoResponse {
     readonly comment: string;
     readonly geoLocation?: TransactionGeoLocationResponse;
     readonly editable: boolean;
+    readonly status: number;
     readonly receiptId?: string;
     readonly receiptSummary?: ReceiptSummaryResponse;
 }

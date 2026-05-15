@@ -90,7 +90,9 @@ import type {
     TransactionStatisticAssetTrendsRequest,
     TransactionStatisticAssetTrendsResponseItem,
     TransactionAmountsRequestParams,
-    TransactionAmountsResponse
+    TransactionAmountsResponse,
+    TransactionStatusModifyRequest,
+    TransactionBatchStatusModifyRequest
 } from '@/models/transaction.ts';
 import {
     TransactionAmountsRequest
@@ -184,7 +186,8 @@ import type {
     ReceiptModifyRequest,
     ReceiptInfoResponse,
     ReceiptAddTransactionsRequest,
-    ReceiptRemoveTransactionRequest
+    ReceiptRemoveTransactionRequest,
+    ReceiptStatusModifyRequest
 } from '@/models/receipt.ts';
 
 import {
@@ -657,6 +660,14 @@ export default {
     moveAllTransactionsBetweenAccounts: (req: TransactionMoveBetweenAccountsRequest): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/transactions/move/all.json', req);
     },
+    modifyTransactionStatus: (req: TransactionStatusModifyRequest): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/transactions/status/modify.json', req);
+    },
+    batchModifyTransactionStatus: (req: TransactionBatchStatusModifyRequest): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/transactions/status/batch_modify.json', req, {
+            timeout: DEFAULT_BATCH_UPDATE_TRANSACTIONS_API_TIMEOUT
+        } as ApiRequestConfig);
+    },
     deleteTransaction: (req: TransactionDeleteRequest): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/transactions/delete.json', req);
     },
@@ -863,6 +874,9 @@ export default {
     },
     modifyReceipt: (req: ReceiptModifyRequest): ApiResponsePromise<ReceiptInfoResponse> => {
         return axios.post<ApiResponse<ReceiptInfoResponse>>('v1/receipts/modify.json', req);
+    },
+    modifyReceiptStatus: (req: ReceiptStatusModifyRequest): ApiResponsePromise<boolean> => {
+        return axios.post<ApiResponse<boolean>>('v1/receipts/status/modify.json', req);
     },
     deleteReceipt: (req: { id: string }): ApiResponsePromise<boolean> => {
         return axios.post<ApiResponse<boolean>>('v1/receipts/delete.json', req);

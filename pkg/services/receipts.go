@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"time"
 
 	"xorm.io/xorm"
@@ -110,7 +111,7 @@ func (s *ReceiptService) CreateReceipt(c core.Context, receipt *models.Receipt) 
 }
 
 // ModifyReceipt saves an existed receipt to database
-func (s *ReceiptService) ModifyReceipt(c core.Context, receipt *models.Receipt, prevAccountId int64) error {
+func (s *ReceiptService) ModifyReceipt(c core.Context, receipt *models.Receipt, prevAccountId int64, prevStatus models.TransactionStatus) error {
 	if receipt.Uid <= 0 {
 		return errs.ErrUserIdInvalid
 	}
@@ -121,8 +122,9 @@ func (s *ReceiptService) ModifyReceipt(c core.Context, receipt *models.Receipt, 
 	receipt.UpdatedUnixTime = now
 
 	return s.UserDataDB(receipt.Uid).DoTransaction(c, func(sess *xorm.Session) error {
+		cols := []string{"transaction_time", "timezone_utc_offset", "account_id", "place", "comment", "updated_unix_time", "status"}
 		updatedRows, err := sess.ID(receipt.ReceiptId).
-			Cols("transaction_time", "timezone_utc_offset", "account_id", "place", "comment", "updated_unix_time").
+			Cols(cols...).
 			Where("uid=? AND deleted=?", receipt.Uid, false).Update(receipt)
 
 		if err != nil {
@@ -146,8 +148,130 @@ func (s *ReceiptService) ModifyReceipt(c core.Context, receipt *models.Receipt, 
 			}
 		}
 
+		// Sync status to child transactions if status changed
+		if prevStatus != receipt.Status {
+			err = s.syncReceiptStatusToTransactions(c, sess, receipt.Uid, receipt.ReceiptId, receipt.Status, prevStatus, now)
+			if err != nil {
+				return err
+			}
+		}
+
 		return nil
 	})
+}
+
+// syncReceiptStatusToTransactions syncs the receipt status to all child transactions and adjusts balances
+func (s *ReceiptService) syncReceiptStatusToTransactions(c core.Context, sess *xorm.Session, uid int64, receiptId int64, newStatus models.TransactionStatus, oldStatus models.TransactionStatus, now int64) error {
+	var transactions []*models.Transaction
+	err := sess.Where("uid=? AND deleted=? AND receipt_id=?", uid, false, receiptId).Find(&transactions)
+	if err != nil {
+		return err
+	}
+
+	for _, t := range transactions {
+		if t.Type == models.TRANSACTION_DB_TYPE_TRANSFER_IN {
+			return errs.ErrTransactionTypeInvalid
+		}
+
+		if t.Status == newStatus {
+			continue
+		}
+
+		sourceAccount, destinationAccount, err := Transactions.getAccountModels(sess, t)
+		if err != nil {
+			return err
+		}
+
+		if sourceAccount.Hidden || (destinationAccount != nil && destinationAccount.Hidden) {
+			return errs.ErrCannotModifyTransactionInHiddenAccount
+		}
+
+		// Update transaction status
+		updateModel := &models.Transaction{
+			Status:          newStatus,
+			UpdatedUnixTime: now,
+		}
+		updateCols := []string{"status", "updated_unix_time"}
+
+		_, err = sess.ID(t.TransactionId).Cols(updateCols...).Where("uid=? AND deleted=?", uid, false).Update(updateModel)
+		if err != nil {
+			return err
+		}
+
+		// Update related transfer transaction status
+		if t.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT {
+			relatedUpdateModel := &models.Transaction{
+				Status:          newStatus,
+				UpdatedUnixTime: now,
+			}
+			_, err = sess.ID(t.RelatedId).Cols(updateCols...).Where("uid=? AND deleted=?", uid, false).Update(relatedUpdateModel)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Adjust balance based on status change
+		needsApply := oldStatus == models.TRANSACTION_STATUS_UNCONFIRMED && newStatus != models.TRANSACTION_STATUS_UNCONFIRMED
+		needsReverse := oldStatus != models.TRANSACTION_STATUS_UNCONFIRMED && newStatus == models.TRANSACTION_STATUS_UNCONFIRMED
+
+		if needsApply || needsReverse {
+			sourceAccount.UpdatedUnixTime = now
+			var balanceMod int64
+
+			switch t.Type {
+			case models.TRANSACTION_DB_TYPE_MODIFY_BALANCE:
+				balanceMod = t.RelatedAccountAmount
+			case models.TRANSACTION_DB_TYPE_INCOME:
+				balanceMod = t.Amount
+			case models.TRANSACTION_DB_TYPE_EXPENSE:
+				balanceMod = -t.Amount
+			case models.TRANSACTION_DB_TYPE_TRANSFER_OUT:
+				balanceMod = -t.Amount
+			default:
+				return errs.ErrTransactionTypeInvalid
+			}
+
+			if needsReverse {
+				balanceMod = -balanceMod
+			}
+
+			var balanceExpr string
+			if balanceMod >= 0 {
+				balanceExpr = fmt.Sprintf("balance+(%d)", balanceMod)
+			} else {
+				balanceExpr = fmt.Sprintf("balance-(%d)", -balanceMod)
+			}
+
+			_, err = sess.ID(sourceAccount.AccountId).SetExpr("balance", balanceExpr).Cols("updated_unix_time").Where("uid=? AND deleted=?", sourceAccount.Uid, false).Update(sourceAccount)
+			if err != nil {
+				return err
+			}
+
+			// Handle destination account for transfers
+			if t.Type == models.TRANSACTION_DB_TYPE_TRANSFER_OUT && destinationAccount != nil {
+				destinationAccount.UpdatedUnixTime = now
+				var destBalanceMod int64 = t.RelatedAccountAmount
+
+				if needsReverse {
+					destBalanceMod = -destBalanceMod
+				}
+
+				var destBalanceExpr string
+				if destBalanceMod >= 0 {
+					destBalanceExpr = fmt.Sprintf("balance+(%d)", destBalanceMod)
+				} else {
+					destBalanceExpr = fmt.Sprintf("balance-(%d)", -destBalanceMod)
+				}
+
+				_, err = sess.ID(destinationAccount.AccountId).SetExpr("balance", destBalanceExpr).Cols("updated_unix_time").Where("uid=? AND deleted=?", destinationAccount.Uid, false).Update(destinationAccount)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // GetReceiptMapByReceiptIds returns a map of receipt id to receipt model
@@ -313,6 +437,50 @@ func (s *ReceiptService) recalculateReceiptTotal(c core.Context, sess *xorm.Sess
 		Where("uid=? AND deleted=?", uid, false).Update(receiptUpdate)
 
 	return err
+}
+
+// UpdateReceiptStatus updates the status of a receipt and all its transactions
+func (s *ReceiptService) UpdateReceiptStatus(c core.Context, uid int64, receiptId int64, newStatus models.TransactionStatus) error {
+	if uid <= 0 {
+		return errs.ErrUserIdInvalid
+	}
+
+	if receiptId <= 0 {
+		return errs.ErrReceiptIdInvalid
+	}
+
+	now := time.Now().Unix()
+
+	return s.UserDataDB(uid).DoTransaction(c, func(sess *xorm.Session) error {
+		receipt := &models.Receipt{}
+		has, err := sess.ID(receiptId).Where("uid=? AND deleted=?", uid, false).Get(receipt)
+
+		if err != nil {
+			return err
+		} else if !has {
+			return errs.ErrReceiptNotFound
+		}
+
+		if receipt.Status == newStatus {
+			return errs.ErrNothingWillBeUpdated
+		}
+
+		oldStatus := receipt.Status
+
+		// Update receipt status
+		receiptUpdateModel := &models.Receipt{
+			Status:          newStatus,
+			UpdatedUnixTime: now,
+		}
+		updatedRows, err := sess.ID(receiptId).Cols("status", "updated_unix_time").Where("uid=? AND deleted=?", uid, false).Update(receiptUpdateModel)
+		if err != nil {
+			return err
+		} else if updatedRows < 1 {
+			return errs.ErrReceiptNotFound
+		}
+
+		return s.syncReceiptStatusToTransactions(c, sess, uid, receiptId, newStatus, oldStatus, now)
+	})
 }
 
 // DeleteAllReceipts deletes all existed receipts from database

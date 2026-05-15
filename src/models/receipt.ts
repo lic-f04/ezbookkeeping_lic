@@ -7,6 +7,7 @@ export interface ReceiptSummaryResponse {
     readonly place: string;
     readonly comment: string;
     readonly totalAmount: number;
+    readonly status: number;
     readonly accountId?: string;
 }
 
@@ -18,6 +19,7 @@ export interface ReceiptInfoResponse {
     readonly place: string;
     readonly comment: string;
     readonly totalAmount: number;
+    readonly status: number;
     readonly transactions?: TransactionInfoResponse[];
 }
 
@@ -36,6 +38,7 @@ export interface ReceiptModifyRequest {
     readonly accountId?: string;
     readonly place: string;
     readonly comment: string;
+    readonly status: number;
 }
 
 export interface ReceiptDeleteRequest {
@@ -52,6 +55,11 @@ export interface ReceiptRemoveTransactionRequest {
     readonly transactionId: string;
 }
 
+export interface ReceiptStatusModifyRequest {
+    readonly id: string;
+    readonly status: number;
+}
+
 export class Receipt implements ReceiptInfoResponse {
     public readonly id: string;
     public readonly time: number;
@@ -60,6 +68,7 @@ export class Receipt implements ReceiptInfoResponse {
     public readonly place: string;
     public readonly comment: string;
     public readonly totalAmount: number;
+    public readonly status: number = 0;
     public transactions?: TransactionInfoResponse[];
 
     public constructor(data: ReceiptInfoResponse) {
@@ -70,6 +79,7 @@ export class Receipt implements ReceiptInfoResponse {
         this.place = data.place;
         this.comment = data.comment;
         this.totalAmount = data.totalAmount;
+        this.status = data.status ?? 0;
         this.transactions = data.transactions;
     }
 

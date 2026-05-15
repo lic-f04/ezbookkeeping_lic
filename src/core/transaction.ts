@@ -148,3 +148,49 @@ export class TransactionQuickAddButtonActionType implements TypeAndName {
         return TransactionQuickAddButtonActionType.allInstancesByType[type];
     }
 }
+
+export class TransactionStatus implements TypeAndName {
+    private static readonly allInstances: TransactionStatus[] = [];
+    private static readonly allInstancesByType: Record<number, TransactionStatus> = {};
+
+    public static readonly Unconfirmed = new TransactionStatus(0, 'Unconfirmed');
+    public static readonly Confirmed = new TransactionStatus(1, 'Confirmed');
+    public static readonly Verified = new TransactionStatus(2, 'Verified');
+
+    public readonly type: number;
+    public readonly name: string;
+
+    private constructor(type: number, name: string) {
+        this.type = type;
+        this.name = name;
+
+        TransactionStatus.allInstances.push(this);
+        TransactionStatus.allInstancesByType[type] = this;
+    }
+
+    public static values(): TransactionStatus[] {
+        return TransactionStatus.allInstances;
+    }
+
+    public static valueOf(type: number): TransactionStatus | undefined {
+        return TransactionStatus.allInstancesByType[type];
+    }
+
+    public get icon(): string {
+        switch (this.type) {
+            case 0: return 'question_circle';        // Unconfirmed
+            case 1: return 'checkmark_alt_circle';   // Confirmed
+            case 2: return 'checkmark_2';            // Verified
+            default: return 'circle';
+        }
+    }
+
+    public get color(): string {
+        switch (this.type) {
+            case 0: return 'orange';   // Unconfirmed
+            case 1: return 'green';    // Confirmed
+            case 2: return 'gray';     // Verified
+            default: return '';
+        }
+    }
+}

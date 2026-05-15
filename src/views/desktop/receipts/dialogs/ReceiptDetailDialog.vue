@@ -32,6 +32,30 @@
                         <v-col cols="12" md="6">
                             <v-select
                                 :disabled="loading || submitting"
+                                :label="tt('Status')"
+                                :items="TransactionStatus.values()"
+                                item-title="name"
+                                item-value="type"
+                                v-model="receipt.status"
+                            >
+                                <template #item="{ props, item }">
+                                    <v-list-item v-bind="props" :title="tt(`transactionStatus.${item.raw.name}`)">
+                                        <template #prepend>
+                                            <v-icon :icon="getMdiIconForF7(item.raw.icon)" :style="{ color: item.raw.color || undefined }" />
+                                        </template>
+                                    </v-list-item>
+                                </template>
+                                <template #selection="{ item }">
+                                    <div class="d-flex align-center">
+                                        <v-icon :icon="getMdiIconForF7(item.raw.icon)" :style="{ color: item.raw.color || undefined }" class="me-1" />
+                                        <span>{{ tt(`transactionStatus.${item.raw.name}`) }}</span>
+                                    </div>
+                                </template>
+                            </v-select>
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <v-select
+                                :disabled="loading || submitting"
                                 :label="tt('Account')"
                                 :items="accountsStore.allPlainAccounts"
                                 item-title="name"
@@ -43,7 +67,7 @@
                         <v-col cols="12" md="6">
                             <div class="d-flex align-center h-100">
                                 <span class="text-subtitle-2">{{ tt('Total Amount') }}:</span>
-                                <span class="text-h6 ms-2" :class="{ 'text-income': receipt.totalAmount > 0, 'text-expense': receipt.totalAmount < 0 }">{{ formatAmountToLocalizedNumerals(Math.abs(receipt.totalAmount)) }}</span>
+                                <span class="text-h6 ms-2" :class="{ 'text-income': receipt.totalAmount > 0, 'text-expense': receipt.totalAmount < 0 }">{{ formatAmountToLocalizedNumeralsWithCurrency(receipt.totalAmount, receipt.accountId ? accountsStore.allAccountsMap[receipt.accountId]?.currency : undefined) }}</span>
                             </div>
                         </v-col>
                         <v-col cols="12">
@@ -91,7 +115,7 @@
                         <td class="text-no-wrap">{{ transaction.comment || '-' }}</td>
                         <td class="text-no-wrap">{{ transaction.category?.name || '-' }}</td>
                         <td class="text-no-wrap">{{ transaction.sourceAccount?.name || '-' }}</td>
-                        <td class="text-end text-no-wrap" :class="{ 'text-expense': transaction.type === TransactionType.Expense, 'text-income': transaction.type === TransactionType.Income, 'text-color-primary': transaction.type === TransactionType.Transfer }">{{ formatAmountToLocalizedNumerals(Math.abs(transaction.sourceAmount)) }}</td>
+                        <td class="text-end text-no-wrap" :class="{ 'text-expense': transaction.type === TransactionType.Expense, 'text-income': transaction.type === TransactionType.Income, 'text-color-primary': transaction.type === TransactionType.Transfer }">{{ formatAmountToLocalizedNumeralsWithCurrency(transaction.sourceAmount, transaction.sourceAccount?.currency) }}</td>
                         <td class="text-end text-no-wrap">
                             <v-btn density="compact" variant="text" size="small"
                                    :prepend-icon="mdiClose"
@@ -128,29 +152,35 @@ import DateTimeSelect from '@/components/desktop/DateTimeSelect.vue';
 import { ref } from 'vue';
 
 import { TransactionEditPageType } from '@/views/base/transactions/TransactionEditPageBase.ts';
-import { TransactionType } from '@/core/transaction.ts';
+import { TransactionType, TransactionStatus } from '@/core/transaction.ts';
 
 import { useI18n } from '@/locales/helpers.ts';
 
 import { useReceiptsStore } from '@/stores/receipt.ts';
 import { useAccountsStore } from '@/stores/account.ts';
+import { useTransactionsStore } from '@/stores/transaction.ts';
 
 import { getCurrentUnixTime, getBrowserTimezoneOffsetMinutes } from '@/lib/datetime.ts';
 import { Receipt, type ReceiptModifyRequest } from '@/models/receipt.ts';
 import services from '@/lib/services.ts';
 
 import {
-    mdiClose
+    mdiClose,
+    mdiHelpCircleOutline,
+    mdiCheckCircleOutline,
+    mdiCheckAll,
+    mdiCircleOutline
 } from '@mdi/js';
 
 type ConfirmDialogType = InstanceType<typeof ConfirmDialog>;
 type SnackBarType = InstanceType<typeof SnackBar>;
 type EditDialogType = InstanceType<typeof EditDialog>;
 
-const { tt, formatAmountToLocalizedNumerals } = useI18n();
+const { tt, formatAmountToLocalizedNumeralsWithCurrency } = useI18n();
 
 const receiptsStore = useReceiptsStore();
 const accountsStore = useAccountsStore();
+const transactionsStore = useTransactionsStore();
 
 const confirmDialog = ref<ConfirmDialogType | null>(null);
 const snackbar = ref<SnackBarType | null>(null);
@@ -187,6 +217,7 @@ function open(options?: { id?: string }): Promise<void> {
             place: '',
             comment: '',
             totalAmount: 0,
+            status: 0,
             transactions: []
         });
         currentReceiptId.value = '';
@@ -251,10 +282,13 @@ function save(): void {
         utcOffset: receipt.value.utcOffset,
         accountId: receipt.value.accountId,
         place: receipt.value.place,
-        comment: receipt.value.comment
+        comment: receipt.value.comment,
+        status: receipt.value.status
     } as ReceiptModifyRequest).then(() => {
         submitting.value = false;
-        snackbar.value?.showMessage('You have saved this receipt');
+transactionsStore.transactionListStateInvalid = true;
+accountsStore.updateAccountListInvalidState(true);
+        close();
     }).catch(error => {
         submitting.value = false;
 
@@ -369,6 +403,15 @@ function removeTransaction(transactionId: string): void {
             }
         });
     });
+}
+
+function getMdiIconForF7(f7Icon: string): string {
+    const map: Record<string, string> = {
+        'question_circle': mdiHelpCircleOutline,
+        'checkmark_alt_circle': mdiCheckCircleOutline,
+        'checkmark_2': mdiCheckAll,
+    };
+    return map[f7Icon] || mdiCircleOutline;
 }
 
 function onShowDateTimeError(error: string): void {

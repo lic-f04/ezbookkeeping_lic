@@ -4,6 +4,11 @@
             "title": "ezBookkeeping"
         }
     },
+    "transactionStatus": {
+        "Unconfirmed": "Unconfirmed",
+        "Confirmed": "Confirmed",
+        "Verified": "Verified"
+    },
     "language": {
         "German": "ಜರ್ಮನ್",
         "English": "ಇಂಗ್ಲಿಷ್",

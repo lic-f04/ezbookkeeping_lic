@@ -403,6 +403,10 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.POST("/transactions/delete.json", bindApi(api.Transactions.TransactionDeleteHandler))
 			apiV1Route.POST("/transactions/batch_delete.json", bindApi(api.Transactions.TransactionBatchDeleteHandler))
 
+			// Transaction Status
+			apiV1Route.POST("/transactions/status/modify.json", bindApi(api.Transactions.TransactionStatusModifyHandler))
+			apiV1Route.POST("/transactions/status/batch_modify.json", bindApi(api.Transactions.TransactionBatchStatusModifyHandler))
+
 			if config.EnableDataImport {
 				apiV1Route.POST("/transactions/parse_custom_file.json", bindApi(api.Transactions.TransactionParseImportCustomFileDataHandler))
 				apiV1Route.POST("/transactions/parse_import.json", bindApi(api.Transactions.TransactionParseImportFileHandler))
@@ -418,6 +422,7 @@ func startWebServer(c *core.CliContext) error {
 			apiV1Route.POST("/receipts/delete.json", bindApi(api.ReceiptsAPI.ReceiptDeleteHandler))
 			apiV1Route.POST("/receipts/add_transactions.json", bindApi(api.ReceiptsAPI.ReceiptAddTransactionsHandler))
 			apiV1Route.POST("/receipts/remove_transaction.json", bindApi(api.ReceiptsAPI.ReceiptRemoveTransactionHandler))
+			apiV1Route.POST("/receipts/status/modify.json", bindApi(api.ReceiptsAPI.ReceiptStatusModifyHandler))
 
 			// Transaction Pictures
 			if config.EnableTransactionPictures {

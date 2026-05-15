@@ -71,14 +71,32 @@
                 v-model:value="transaction.comment"
             ></f7-list-input>
 
+            <!-- Status + Source Account merged -->
             <f7-list-item
-                class="list-item-with-header-and-title"
+                class="list-item-with-header-and-title transaction-edit-account-row"
                 link="#" no-chevron
                 :class="{ 'disabled': !allVisibleAccounts.length || (mode === TransactionEditPageMode.Edit && transaction.type === TransactionType.ModifyBalance), 'readonly': mode === TransactionEditPageMode.View }"
                 :header="tt(sourceAccountTitle)"
                 :title="sourceAccountName"
                 @click="showSourceAccountSheet = true"
             >
+                <template #media v-if="pageTypeAndMode?.type === TransactionEditPageType.Transaction">
+                    <f7-icon :f7="TransactionStatus.valueOf(transaction.status)?.icon || 'circle'" :style="{ color: TransactionStatus.valueOf(transaction.status)?.color || undefined }" class="transaction-status-icon" @click.stop="showStatusSheet = true"></f7-icon>
+                </template>
+                <f7-actions close-by-outside-click close-on-escape :opened="showStatusSheet" @actions:closed="showStatusSheet = false">
+                    <f7-actions-group>
+                        <f7-actions-button bold v-for="s in TransactionStatus.values()" :key="s.type"
+                            @click="transaction.status = s.type">
+                            <div class="d-flex align-center justify-content-center">
+                                <f7-icon :f7="s.icon" :style="{ color: s.color || undefined }" class="me-2"></f7-icon>
+                                <span>{{ tt(`transactionStatus.${s.name}`) }}</span>
+                            </div>
+                        </f7-actions-button>
+                    </f7-actions-group>
+                    <f7-actions-group>
+                        <f7-actions-button bold close>{{ tt('Cancel') }}</f7-actions-button>
+                    </f7-actions-group>
+                </f7-actions>
                 <two-column-list-item-selection-sheet primary-key-field="id" primary-value-field="category"
                                                       primary-title-field="name" primary-footer-field="displayBalance"
                                                       primary-icon-field="icon" primary-icon-type="account"
@@ -161,7 +179,7 @@
                 link="#" no-chevron
                 :class="{ 'disabled': !hasVisibleExpenseCategories, 'readonly': mode === TransactionEditPageMode.View }"
                 :header="tt(sourceUnitPriceName)"
-                :title="`${transaction.unitPrice.toFixed(2)} ${sourceAccountCurrency}`"
+                :title="formatAmountToLocalizedNumeralsWithCurrency(Math.round(transaction.unitPrice * 100), sourceAccountCurrency)"
                 @click="showUnitPriceSheet = true"
                 v-if="showQuantityPriceFields"
             >
@@ -568,7 +586,8 @@ import {
     TransactionType,
     TransactionEditScopeType,
     TransactionQuickSaveButtonStyle,
-    TransactionQuickAddButtonActionType
+    TransactionQuickAddButtonActionType,
+    TransactionStatus
 } from '@/core/transaction.ts';
 import { ScheduledTemplateFrequencyType, TemplateType } from '@/core/template.ts';
 
@@ -590,6 +609,7 @@ import { generateRandomUUID } from '@/lib/misc.ts';
 import { getTransactionCategoryFullPathName } from '@/lib/category.ts';
 import { type SetTransactionOptions } from '@/lib/transaction.ts';
 import { getMapProvider, isTransactionPicturesEnabled } from '@/lib/server_settings.ts';
+import services from '@/lib/services.ts';
 import logger from '@/lib/logger.ts';
 
 const props = defineProps<{
@@ -608,7 +628,8 @@ const {
     formatDateTimeToLongDate,
     formatDateTimeToLongTime,
     formatGregorianTextualYearMonthDayToLongDate,
-    parseAmountFromLocalizedNumerals
+    parseAmountFromLocalizedNumerals,
+    formatAmountToLocalizedNumeralsWithCurrency
 } = useI18n();
 const { showAlert, showConfirm, showToast, routeBackOnError } = useI18nUIComponents();
 
@@ -681,6 +702,8 @@ const isSupportClipboard = !!navigator.clipboard;
 
 const loadingError = ref<unknown | null>(null);
 const removingPictureId = ref<string | null>(null);
+const showStatusSheet = ref<boolean>(false);
+const originalTransactionStatus = ref<number>(0);
 const transactionDateTimeSheetMode = ref<string>('time');
 const showTimeInDefaultTimezone = ref<boolean>(false);
 const showQuickSavePopover = ref<boolean>(false);
@@ -1106,6 +1129,8 @@ function init(): void {
             pageTypeAndMode.type === TransactionEditPageType.Transaction && (mode.value === TransactionEditPageMode.Edit || mode.value === TransactionEditPageMode.View)
         );
 
+        originalTransactionStatus.value = transaction.value.status;
+
         if (pageTypeAndMode.type === TransactionEditPageType.Transaction && query['id'] && responses[4] instanceof Transaction) {
             if (fromTransaction && query['withTime'] && query['withTime'] === 'true') {
                 transaction.value.time = fromTransaction.time;
@@ -1190,7 +1215,25 @@ function save(afterAction: AfterSaveAction): void {
                 submitting.value = false;
                 hideLoading();
 
-                if (error.error && (error.error.errorCode === KnownErrorCode.TransactionCannotCreateInThisTime || error.error.errorCode === KnownErrorCode.TransactionCannotModifyInThisTime)) {
+                const errorCode = error.error?.errorCode;
+
+                if (errorCode === KnownErrorCode.NothingWillBeUpdated && originalTransactionStatus.value !== transaction.value.status) {
+                    services.modifyTransactionStatus({
+                        id: transaction.value.id,
+                        status: transaction.value.status
+                    }).then(() => {
+                        submitted.value = true;
+                        showToast(mode.value === TransactionEditPageMode.Add ? 'You have added a new transaction' : 'You have saved this transaction');
+                        router.back();
+                    }).catch(statusError => {
+                        if (!statusError.processed) {
+                            showToast(statusError.message || statusError);
+                        }
+                    });
+                    return;
+                }
+
+                if (errorCode === KnownErrorCode.TransactionCannotCreateInThisTime || errorCode === KnownErrorCode.TransactionCannotModifyInThisTime) {
                     showConfirm('You have set this time range to prevent editing transactions. Would you like to change the editable transaction range to All?', () => {
                         submitting.value = true;
                         showLoading(() => submitting.value);
@@ -1496,6 +1539,20 @@ init();
     font-size: var(--ebk-category-separate-icon-font-size);
     line-height: 16px;
     color: var(--f7-color-gray-tint);
+}
+
+.list .transaction-edit-comment textarea {
+    min-height: 1.4em;
+    height: 1.4em;
+}
+
+.transaction-edit-account-row .item-content .item-header {
+    margin-bottom: 4px;
+}
+
+.transaction-edit-account-row .item-content .item-inner {
+    padding-top: 6px;
+    padding-bottom: 6px;
 }
 
 .transaction-edit-amount {

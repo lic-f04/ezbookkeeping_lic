@@ -59,6 +59,16 @@ const (
 	TRANSACTION_DB_TYPE_TRANSFER_IN    TransactionDbType = 5
 )
 
+// TransactionStatus represents transaction status
+type TransactionStatus byte
+
+// Transaction statuses
+const (
+	TRANSACTION_STATUS_UNCONFIRMED TransactionStatus = 0
+	TRANSACTION_STATUS_CONFIRMED   TransactionStatus = 1
+	TRANSACTION_STATUS_VERIFIED    TransactionStatus = 2
+)
+
 // String returns a textual representation of the transaction types for db enum
 func (t TransactionDbType) String() string {
 	switch t {
@@ -141,7 +151,8 @@ type Transaction struct {
 	GeoLatitude          float64           `xorm:"INDEX(IDX_transaction_uid_deleted_time_longitude_latitude)"`
 	CreatedIp            string            `xorm:"VARCHAR(39)"`
 	ScheduledCreated     bool
-	ReceiptId            int64  `xorm:"INDEX NOT NULL DEFAULT 0"`
+	Status               TransactionStatus `xorm:"NOT NULL DEFAULT 0"`
+	ReceiptId            int64              `xorm:"INDEX NOT NULL DEFAULT 0"`
 	CreatedUnixTime      int64
 	UpdatedUnixTime      int64
 	DeletedUnixTime      int64
@@ -195,6 +206,7 @@ type TransactionModifyRequest struct {
 	Quantity             int64                          `json:"quantity" binding:"min=0,max=999999999"`  // Lic
 	UnitPrice            int64                          `json:"unitPrice" binding:"min=0,max=999999999"` // Lic
 	HideAmount           bool                           `json:"hideAmount"`
+	Status               TransactionStatus              `json:"status,omitempty" binding:"min=0,max=2"`
 	TagIds               []string                       `json:"tagIds"`
 	PictureIds           []string                       `json:"pictureIds"`
 	Comment              string                         `json:"comment" binding:"max=255"`
@@ -421,6 +433,7 @@ type TransactionInfoResponse struct {
 	Comment              string                                   `json:"comment"`
 	GeoLocation          *TransactionGeoLocationResponse          `json:"geoLocation,omitempty"`
 	Editable             bool                                     `json:"editable"`
+	Status               TransactionStatus                        `json:"status"`
 	ReceiptId            int64                                    `json:"receiptId,string,omitempty"`
 	ReceiptSummary       *ReceiptSummaryResponse                  `json:"receiptSummary,omitempty"`
 }
@@ -635,6 +648,7 @@ func (t *Transaction) ToTransactionInfoResponse(tagIds []int64, editable bool) *
 		Comment:              t.Comment,
 		GeoLocation:          geoLocation,
 		Editable:             editable,
+		Status:               t.Status,
 		ReceiptId:            t.ReceiptId,
 	}
 }
@@ -697,6 +711,24 @@ func (t *YearMonthRangeRequest) GetNumericYearMonthRange() (int32, int32, int32,
 	}
 
 	return startYear, startMonth, endYear, endMonth, nil
+}
+
+// TransactionStatusModifyRequest represents transaction status modify request
+type TransactionStatusModifyRequest struct {
+	Id     int64              `json:"id,string" binding:"required,min=1"`
+	Status TransactionStatus  `json:"status" binding:"min=0,max=2"`
+}
+
+// TransactionBatchStatusModifyRequest represents batch transaction status modify request
+type TransactionBatchStatusModifyRequest struct {
+	Ids    []string           `json:"ids" binding:"required"`
+	Status TransactionStatus  `json:"status" binding:"min=0,max=2"`
+}
+
+// ReceiptStatusModifyRequest represents receipt status modify request
+type ReceiptStatusModifyRequest struct {
+	Id     int64              `json:"id,string" binding:"required,min=1"`
+	Status TransactionStatus  `json:"status" binding:"min=0,max=2"`
 }
 
 // TransactionInfoResponseSlice represents the slice data structure of TransactionInfoResponse

@@ -232,6 +232,8 @@ export function setTransactionModelByTransaction(transaction: Transaction, trans
 
         transaction.receiptId = transaction2.receiptId;
 
+        transaction.status = transaction2.status;
+
         if (setContextData) {
             transaction.setGeoLocation(transaction2.geoLocation);
         }

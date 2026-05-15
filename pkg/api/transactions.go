@@ -1278,6 +1278,7 @@ func (a *TransactionsApi) TransactionModifyHandler(c *core.WebContext) (any, *er
 		Quantity:          transactionModifyReq.Quantity,  // Lic
 		UnitPrice:         transactionModifyReq.UnitPrice, // Lic
 		HideAmount:        transactionModifyReq.HideAmount,
+		Status:            transactionModifyReq.Status,
 		Comment:           transactionModifyReq.Comment,
 	}
 
@@ -1314,6 +1315,7 @@ func (a *TransactionsApi) TransactionModifyHandler(c *core.WebContext) (any, *er
 		(transaction.Type != models.TRANSACTION_DB_TYPE_TRANSFER_OUT || newTransaction.RelatedAccountId == transaction.RelatedAccountId) &&
 		(transaction.Type != models.TRANSACTION_DB_TYPE_TRANSFER_OUT || newTransaction.RelatedAccountAmount == transaction.RelatedAccountAmount) &&
 		newTransaction.HideAmount == transaction.HideAmount &&
+		newTransaction.Status == transaction.Status &&
 		newTransaction.Comment == transaction.Comment &&
 		newTransaction.GeoLongitude == transaction.GeoLongitude &&
 		newTransaction.GeoLatitude == transaction.GeoLatitude &&
@@ -2747,6 +2749,66 @@ func (a *TransactionsApi) TransactionImportProcessHandler(c *core.WebContext) (a
 	}
 
 	return process, nil
+}
+
+// TransactionStatusModifyHandler changes the status of a transaction
+func (a *TransactionsApi) TransactionStatusModifyHandler(c *core.WebContext) (any, *errs.Error) {
+	var req models.TransactionStatusModifyRequest
+	err := c.ShouldBindJSON(&req)
+
+	if err != nil {
+		log.Warnf(c, "[transactions.TransactionStatusModifyHandler] parse request failed, because %s", err.Error())
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+
+	uid := c.GetCurrentUid()
+
+	err = a.transactions.UpdateTransactionStatus(c, uid, req.Id, req.Status)
+
+	if err != nil {
+		if err == errs.ErrNothingWillBeUpdated {
+			return nil, errs.ErrNothingWillBeUpdated
+		}
+		log.Errorf(c, "[transactions.TransactionStatusModifyHandler] failed to update transaction \"id:%d\" status for user \"uid:%d\", because %s", req.Id, uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	log.Infof(c, "[transactions.TransactionStatusModifyHandler] user \"uid:%d\" has updated transaction \"id:%d\" status to %d successfully", uid, req.Id, req.Status)
+
+	return true, nil
+}
+
+// TransactionBatchStatusModifyHandler changes the status of multiple transactions
+func (a *TransactionsApi) TransactionBatchStatusModifyHandler(c *core.WebContext) (any, *errs.Error) {
+	var req models.TransactionBatchStatusModifyRequest
+	err := c.ShouldBindJSON(&req)
+
+	if err != nil {
+		log.Warnf(c, "[transactions.TransactionBatchStatusModifyHandler] parse request failed, because %s", err.Error())
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+
+	uid := c.GetCurrentUid()
+	transactionIds, err := utils.StringArrayToInt64Array(req.Ids)
+
+	if err != nil {
+		log.Warnf(c, "[transactions.TransactionBatchStatusModifyHandler] parse transaction ids failed, because %s", err.Error())
+		return nil, errs.ErrTransactionIdInvalid
+	}
+
+	err = a.transactions.BatchUpdateTransactionsStatus(c, uid, transactionIds, req.Status)
+
+	if err != nil {
+		if err == errs.ErrNothingWillBeUpdated {
+			return nil, errs.ErrNothingWillBeUpdated
+		}
+		log.Errorf(c, "[transactions.TransactionBatchStatusModifyHandler] failed to batch update transaction status for user \"uid:%d\", because %s", uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	log.Infof(c, "[transactions.TransactionBatchStatusModifyHandler] user \"uid:%d\" has batch updated %d transactions status to %d successfully", uid, len(transactionIds), req.Status)
+
+	return true, nil
 }
 
 func (a *TransactionsApi) filterTransactions(c *core.WebContext, uid int64, transactions []*models.Transaction, accountMap map[int64]*models.Account) []*models.Transaction {

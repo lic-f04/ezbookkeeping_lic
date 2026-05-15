@@ -222,6 +222,9 @@
                                                     </v-list>
                                                 </v-menu>
                                             </th>
+                                            <th class="transaction-table-column-status text-no-wrap text-center">
+                                                <span>{{ tt('Status') }}</span>
+                                            </th>
                                             <th class="transaction-table-column-category text-no-wrap">
                                                 <v-menu ref="categoryFilterMenu" class="transaction-category-menu"
                                                         eager location="bottom" max-height="500"
@@ -517,7 +520,7 @@
 
                                         <tbody v-if="loading && (!transactions || !transactions.length || transactions.length < 1)">
                                         <tr :key="itemIdx" v-for="itemIdx in skeletonData">
-                                            <td class="px-0" :colspan="showTagInTransactionListPage ? 6 : 5">
+                                            <td class="px-0" :colspan="showTagInTransactionListPage ? 7 : 6">
                                                 <v-skeleton-loader type="text" :loading="true"></v-skeleton-loader>
                                             </td>
                                         </tr>
@@ -525,7 +528,7 @@
 
                                         <tbody v-if="!loading && (!transactions || !transactions.length || transactions.length < 1)">
                                         <tr>
-                                            <td :colspan="showTagInTransactionListPage ? 6 : 5">{{ tt('No transaction data') }}</td>
+                                            <td :colspan="showTagInTransactionListPage ? 7 : 6">{{ tt('No transaction data') }}</td>
                                         </tr>
                                         </tbody>
 
@@ -533,7 +536,7 @@
                                             <!-- Заголовок даты -->
                                             <tr class="transaction-list-row-date no-hover text-sm" 
                                                 v-if="pageType === TransactionListPageType.List.type && dayTransactions.length > 0">
-                                                <td :colspan="showTagInTransactionListPage ? 6 : 5" class="font-weight-bold">
+                                                <td :colspan="showTagInTransactionListPage ? 7 : 6" class="font-weight-bold">
                                                     <div class="d-flex align-center">
                                                         <!-- Добавляем опциональную цепочку или проверку, хотя length > 0 уже гарантирует наличие -->
                                                         <span>{{ getDisplayLongDate(dayTransactions[0]!) }}</span>
@@ -557,6 +560,11 @@
                                                             <div class="d-flex flex-column">
                                                                 <span>{{ getDisplayTime(transaction) }}</span>
                                                             </div>
+                                                        </td>
+                                                        <td class="transaction-table-column-status text-center">
+                                                            <v-icon :icon="getStatusIcon(transaction.receiptSummary.status)"
+                                                                size="20" :style="{ color: getStatusColor(transaction.receiptSummary.status) || undefined }"
+                                                                @click.stop="openStatusDialog(transaction)" />
                                                         </td>
                                                         <td class="transaction-table-column-category">
                                                             <div class="d-flex align-center">
@@ -590,6 +598,11 @@
                                                             <span class="text-caption" v-if="!isSameAsDefaultTimezoneOffsetMinutes(transaction)">{{ getDisplayTimezone(transaction) }}</span>
                                                             <v-tooltip activator="parent" v-if="!isSameAsDefaultTimezoneOffsetMinutes(transaction)">{{ getDisplayTimeInDefaultTimezone(transaction) }}</v-tooltip>
                                                         </div>
+                                                    </td>
+                                                    <td class="transaction-table-column-status text-center">
+                                                        <v-icon :icon="getStatusIcon(transaction.status)"
+                                                            size="20" :style="{ color: getStatusColor(transaction.status) || undefined }"
+                                                            @click.stop="openStatusDialog(transaction)" />
                                                     </td>
                                                     <td class="transaction-table-column-category">
                                                         <div class="d-flex align-center">
@@ -732,6 +745,22 @@
 
     <confirm-dialog ref="confirmDialog"/>
     <snack-bar ref="snackbar" />
+
+    <v-dialog max-width="250" v-model="showStatusDialog">
+        <v-card>
+            <v-card-text class="pa-2">
+                <v-list density="compact">
+                    <v-list-item v-for="s in TransactionStatus.values()" :key="s.type"
+                        @click="changeTransactionStatusFromDialog(s.type)">
+                        <template v-slot:prepend>
+                            <v-icon :icon="getMdiIconForF7(s.icon)" :color="s.color || undefined" size="20" />
+                        </template>
+                        <v-list-item-title>{{ tt(`transactionStatus.${s.name}`) }}</v-list-item-title>
+                    </v-list-item>
+                </v-list>
+            </v-card-text>
+        </v-card>
+    </v-dialog>
 </template>
 
 <script setup lang="ts">
@@ -778,11 +807,13 @@ import {
 } from '@/core/datetime.ts';
 import { AmountFilterType } from '@/core/numeral.ts';
 import { ThemeType } from '@/core/theme.ts';
-import { TransactionType } from '@/core/transaction.ts';
+import { TransactionType, TransactionStatus } from '@/core/transaction.ts';
 import { TemplateType }  from '@/core/template.ts';
 import type { TransactionCategory } from '@/models/transaction_category.ts';
 import { type Transaction, TransactionTagFilter } from '@/models/transaction.ts';
 import type { TransactionTemplate } from '@/models/transaction_template.ts';
+
+import services from '@/lib/services.ts';
 
 import {
     isDefined,
@@ -834,7 +865,11 @@ import {
     mdiMagicStaff,
     mdiTextBoxOutline,
     mdiTextBoxEditOutline,
-    mdiReceiptTextOutline
+    mdiReceiptTextOutline,
+    mdiHelpCircleOutline,
+    mdiCheckCircleOutline,
+    mdiCheckAll,
+    mdiCircleOutline
 } from '@mdi/js';
 
 interface TransactionListProps {
@@ -872,7 +907,8 @@ const {
     tt,
     getAllRecentMonthDateRanges,
     getWeekdayLongName,
-    formatNumberToLocalizedNumerals
+    formatNumberToLocalizedNumerals,
+    formatAmountToLocalizedNumeralsWithCurrency
 } = useI18n();
 
 const {
@@ -950,6 +986,8 @@ const editDialog = useTemplateRef<EditDialogType>('editDialog');
 const aiImageRecognitionDialog = useTemplateRef<AIImageRecognitionDialogType>('aiImageRecognitionDialog');
 const importDialog = useTemplateRef<ImportDialogType>('importDialog');
 const receiptDetailDialog = useTemplateRef<ReceiptDetailDialogType>('receiptDetailDialog');
+const showStatusDialog = ref<boolean>(false);
+const selectedStatusTransaction = ref<Transaction | null>(null);
 
 const activeTab = ref<string>('transactionPage');
 const currentPage = ref<number>(1);
@@ -1775,16 +1813,75 @@ function exportTransactions(fileExtension: string): void {
     });
 }
 
+function getMdiIconForF7(f7Icon: string): string {
+    const map: Record<string, string> = {
+        'question_circle': mdiHelpCircleOutline,
+        'checkmark_alt_circle': mdiCheckCircleOutline,
+        'checkmark_2': mdiCheckAll,
+    };
+    return map[f7Icon] || mdiCircleOutline;
+}
+
+function getStatusIcon(status: number): string {
+    return getMdiIconForF7(TransactionStatus.valueOf(status)?.icon || 'circle');
+}
+
+ function getStatusColor(status: number): string {
+    return TransactionStatus.valueOf(status)?.color || '';
+}
+
+function openStatusDialog(transaction: Transaction): void {
+    selectedStatusTransaction.value = transaction;
+    showStatusDialog.value = true;
+}
+
+function changeTransactionStatusFromDialog(newStatus: number): void {
+    const transaction = selectedStatusTransaction.value;
+    if (!transaction) return;
+
+    const currentStatus = transaction.receiptSummary ? transaction.receiptSummary.status : transaction.status;
+    if (currentStatus === newStatus) {
+        showStatusDialog.value = false;
+        return;
+    }
+
+    showStatusDialog.value = false;
+
+    if (transaction.receiptSummary) {
+        services.modifyReceiptStatus({
+            id: transaction.receiptSummary.id,
+            status: newStatus
+        }).then(() => {
+            transactionsStore.transactionListStateInvalid = true;
+            accountsStore.updateAccountListInvalidState(true);
+            reload(false, false);
+        }).catch(error => {
+            if (!error.processed) {
+                snackbar.value?.showError(error);
+            }
+        });
+    } else {
+        services.modifyTransactionStatus({
+            id: transaction.id,
+            status: newStatus
+        }).then(() => {
+            transactionsStore.transactionListStateInvalid = true;
+            accountsStore.updateAccountListInvalidState(true);
+            reload(false, false);
+        }).catch(error => {
+            if (!error.processed) {
+                snackbar.value?.showError(error);
+            }
+        });
+    }
+}
+
 function formatReceiptAmount(transaction: Transaction): string {
     const summary = transaction.receiptSummary;
     if (!summary) return '';
 
-    const amount = Math.abs(summary.totalAmount);
-    const account = summary.accountId ? accountsStore.allAccountsMap[summary.accountId] : undefined;
-    if (account) {
-        return `${formatNumberToLocalizedNumerals(amount/100)} ${account.currency}`;
-    }
-    return formatNumberToLocalizedNumerals(amount/100);
+    const currency = summary.accountId ? accountsStore.allAccountsMap[summary.accountId]?.currency : undefined;
+    return formatAmountToLocalizedNumeralsWithCurrency(summary.totalAmount, currency);
 }
 
 function show(transaction: Transaction): void {
@@ -1961,6 +2058,11 @@ init(props);
 
 .transaction-table .transaction-table-column-time {
     min-width: 110px;
+}
+
+.transaction-table .transaction-table-column-status {
+    min-width: 40px;
+    width: 40px;
 }
 
 .transaction-table .transaction-table-column-category {

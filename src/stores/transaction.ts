@@ -351,6 +351,10 @@ export const useTransactionsStore = defineStore('transactions', () => {
         }
 
         for (const transaction of transactionMonthList.items) {
+            if (transaction.status === 0) { // Unconfirmed transactions do not affect totals
+                continue;
+            }
+
             const transactionDay = isNumber(transaction.gregorianCalendarDayOfMonth) ? transaction.gregorianCalendarDayOfMonth.toString() : '0';
             let dailyTotalAmount = dailyTotalAmounts[transactionDay];
 

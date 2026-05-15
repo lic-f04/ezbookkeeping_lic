@@ -160,20 +160,16 @@
                 </v-col>
 
                 <v-col cols="12" md="6" v-if="showQuantityPriceFields">
-                  <v-text-field
-                    type="number"
-                    persistent-placeholder
+                  <amount-input class="transaction-edit-amount font-weight-bold"
+                    :currency="sourceAccountCurrency"
+                    :show-currency="true"
                     :readonly="mode === TransactionEditPageMode.View"
                     :disabled="loading || submitting"
+                    :persistent-placeholder="true"
                     :label="tt(sourceUnitPriceName)"
                     :placeholder="tt(sourceUnitPriceName)"
-                    :title="`${transaction.unitPrice.toFixed(2)} ${sourceAccountCurrency}`"
-                    v-model.number="transaction.unitPrice"
-                    :suffix="sourceAccountCurrency"
-                    @update:model-value="onQuantityOrPriceChange"
-                    step="0.01"
-                    min="0"
-                  />
+                    :enable-formula="false"
+                    v-model="unitPriceInCents" />
                 </v-col>
                 <!-- ========== КОНЕЦ ПОЛЕЙ КОЛИЧЕСТВО И ЦЕНА ========== -->
 
@@ -228,7 +224,32 @@
                   </v-tooltip>
                 </v-col>
 
-                <v-col cols="12" :md="transaction.type === TransactionType.Transfer ? 6 : 12">
+                <v-col cols="12" md="6" v-if="type === TransactionEditPageType.Transaction">
+                  <v-select
+                    :readonly="mode === TransactionEditPageMode.View"
+                    :disabled="loading || submitting"
+                    :label="tt('Status')"
+                    :items="TransactionStatus.values()"
+                    item-title="name"
+                    item-value="type"
+                    v-model="transaction.status"
+                  >
+                    <template #item="{ props, item }">
+                      <v-list-item v-bind="props" :title="tt(`transactionStatus.${item.raw.name}`)">
+                        <template #prepend>
+                          <v-icon :icon="getMdiIconForF7(item.raw.icon)" :style="{ color: item.raw.color || undefined }" />
+                        </template>
+                      </v-list-item>
+                    </template>
+                    <template #selection="{ item }">
+                      <div class="d-flex align-center">
+                        <v-icon :icon="getMdiIconForF7(item.raw.icon)" :style="{ color: item.raw.color || undefined }" class="me-1" />
+                        <span>{{ tt(`transactionStatus.${item.raw.name}`) }}</span>
+                      </div>
+                    </template>
+                  </v-select>
+                </v-col>
+                <v-col cols="12" :md="transaction.type === TransactionType.Transfer ? 6 : 6">
                   <v-tooltip :disabled="!!allVisibleAccounts.length" :text="allVisibleAccounts.length ? '' : tt('No available account')">
                     <template v-slot:activator="{ props }">
                       <div v-bind="props" class="d-block">
@@ -529,7 +550,7 @@ import { useTransactionsStore } from '@/stores/transaction.ts';
 import { useTransactionTemplatesStore } from '@/stores/transactionTemplate.ts';
 import type { Coordinate } from '@/core/coordinate.ts';
 import { CategoryType } from '@/core/category.ts';
-import { TransactionType, TransactionEditScopeType, TransactionQuickAddButtonActionType } from '@/core/transaction.ts';
+import { TransactionType, TransactionEditScopeType, TransactionQuickAddButtonActionType, TransactionStatus } from '@/core/transaction.ts';
 import { TemplateType, ScheduledTemplateFrequencyType } from '@/core/template.ts';
 import { KnownErrorCode } from '@/consts/api.ts';
 import { SUPPORTED_IMAGE_EXTENSIONS } from '@/consts/file.ts';
@@ -543,8 +564,8 @@ import {
 import { formatCoordinate } from '@/lib/coordinate.ts';
 import { generateRandomUUID } from '@/lib/misc.ts';
 import {
-  isTransactionPicturesEnabled,
-  getMapProvider
+    isTransactionPicturesEnabled,
+    getMapProvider
 } from '@/lib/server_settings.ts';
 import {
   isSupportGetGeoLocationByClick
@@ -558,9 +579,13 @@ import {
   mdiMapMarkerOutline,
   mdiCheck,
   mdiMenuDown,
-  mdiImagePlusOutline,
-  mdiTrashCanOutline,
-  mdiFullscreen
+    mdiImagePlusOutline,
+    mdiTrashCanOutline,
+    mdiFullscreen,
+    mdiHelpCircleOutline,
+    mdiCheckCircleOutline,
+    mdiCheckAll,
+    mdiCircleOutline
 } from '@mdi/js';
 import type { SetTransactionOptions } from '@/lib/transaction.ts';
 
@@ -659,6 +684,7 @@ const pictureInput = useTemplateRef<HTMLInputElement>('pictureInput');
 const showState = ref<boolean>(false);
 const activeTab = ref<string>('basicInfo');
 const originalTransactionEditable = ref<boolean>(false);
+const originalTransactionStatus = ref<number>(0);
 const noTransactionDraft = ref<boolean>(false);
 const geoMenuState = ref<boolean>(false);
 const removingPictureId = ref<string>('');
@@ -673,6 +699,15 @@ const showQuantityPriceFields = computed<boolean>(() => {
          transaction.value.type === TransactionType.Income;
 });
 // ========== КОНЕЦ ВЫЧИСЛЯЕМЫХ СВОЙСТВ ==========
+
+function getMdiIconForF7(f7Icon: string): string {
+    const map: Record<string, string> = {
+        'question_circle': mdiHelpCircleOutline,
+        'checkmark_alt_circle': mdiCheckCircleOutline,
+        'checkmark_2': mdiCheckAll,
+    };
+    return map[f7Icon] || mdiCircleOutline;
+}
 
 const sourceAmountColor = computed<string | undefined>(() => {
   if (transaction.value.type === TransactionType.Expense) {
@@ -703,6 +738,14 @@ const isTransactionModified = computed<boolean>(() => {
 });
 
 // ========== МЕТОДЫ ДЛЯ ПЕРЕСЧЕТА СУММЫ/ЦЕНЫ/КОЛИЧЕСТВА ==========
+
+const unitPriceInCents = computed<number>({
+  get: () => Math.round(transaction.value.unitPrice * 100),
+  set: (val: number) => {
+    transaction.value.unitPrice = val / 100;
+    onQuantityOrPriceChange();
+  }
+});
 
 /**
  * Обработчик изменения количества или цены
@@ -823,6 +866,7 @@ function open(options: TransactionEditOptions): Promise<TransactionEditResponse 
 
   if (mode.value === TransactionEditPageMode.Add) {
     clientSessionId.value = generateRandomUUID();
+    originalTransactionStatus.value = 0;
   }
 
   Promise.all(promises).then(function (responses) {
@@ -841,6 +885,7 @@ function open(options: TransactionEditOptions): Promise<TransactionEditResponse 
       const transaction: Transaction = responses[3];
       setTransactionModel(transaction, options, true);
       originalTransactionEditable.value = transaction.editable;
+      originalTransactionStatus.value = transaction.status;
     } else if (props.type === TransactionEditPageType.Template && options && options.id && responses[3] && responses[3] instanceof TransactionTemplate) {
       const template: TransactionTemplate = responses[3];
       setTransactionModel(template, options, false);

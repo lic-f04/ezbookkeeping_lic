@@ -109,7 +109,8 @@ function createEmptyReceipt(): Receipt {
         utcOffset: getBrowserTimezoneOffsetMinutes(now),
         place: '',
         comment: '',
-        totalAmount: 0
+        totalAmount: 0,
+        status: 0
     });
 }
 

@@ -163,13 +163,15 @@ func (a *ReceiptsApi) ReceiptModifyHandler(c *core.WebContext) (any, *errs.Error
 	}
 
 	prevAccountId := receipt.AccountId
+	prevStatus := receipt.Status
 	receipt.TransactionTime = utils.GetMinTransactionTimeFromUnixTime(req.Time)
 	receipt.TimezoneUtcOffset = req.UtcOffset
 	receipt.AccountId = req.AccountId
 	receipt.Place = req.Place
 	receipt.Comment = req.Comment
+	receipt.Status = req.Status
 
-	err = a.receipts.ModifyReceipt(c, receipt, prevAccountId)
+	err = a.receipts.ModifyReceipt(c, receipt, prevAccountId, prevStatus)
 
 	if err != nil {
 		log.Errorf(c, "[receipts.ReceiptModifyHandler] failed to modify receipt \"id:%d\" for user \"uid:%d\", because %s", req.Id, uid, err.Error())
@@ -255,6 +257,33 @@ func (a *ReceiptsApi) ReceiptRemoveTransactionHandler(c *core.WebContext) (any, 
 	}
 
 	log.Infof(c, "[receipts.ReceiptRemoveTransactionHandler] user \"uid:%d\" has removed transaction \"id:%d\" from receipt \"id:%d\"", uid, req.TransactionId, req.ReceiptId)
+
+	return true, nil
+}
+
+// ReceiptStatusModifyHandler changes the status of a receipt and all its transactions
+func (a *ReceiptsApi) ReceiptStatusModifyHandler(c *core.WebContext) (any, *errs.Error) {
+	var req models.ReceiptStatusModifyRequest
+	err := c.ShouldBindJSON(&req)
+
+	if err != nil {
+		log.Warnf(c, "[receipts.ReceiptStatusModifyHandler] parse request failed, because %s", err.Error())
+		return nil, errs.NewIncompleteOrIncorrectSubmissionError(err)
+	}
+
+	uid := c.GetCurrentUid()
+
+	err = a.receipts.UpdateReceiptStatus(c, uid, req.Id, req.Status)
+
+	if err != nil {
+		if err == errs.ErrNothingWillBeUpdated {
+			return nil, errs.ErrNothingWillBeUpdated
+		}
+		log.Errorf(c, "[receipts.ReceiptStatusModifyHandler] failed to update receipt \"id:%d\" status for user \"uid:%d\", because %s", req.Id, uid, err.Error())
+		return nil, errs.Or(err, errs.ErrOperationFailed)
+	}
+
+	log.Infof(c, "[receipts.ReceiptStatusModifyHandler] user \"uid:%d\" has updated receipt \"id:%d\" status to %d successfully", uid, req.Id, req.Status)
 
 	return true, nil
 }
